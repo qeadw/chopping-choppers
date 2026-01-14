@@ -12,6 +12,7 @@ import {
   TREE_STATS,
   UPGRADE_COSTS,
   WORKER_COSTS,
+  Position,
 } from '../types';
 import { createPlayer, updatePlayer, createCamera, updateCamera, canChop, startChop } from './player';
 import { createInputState, setupInputHandlers } from './input';
@@ -130,6 +131,9 @@ export class GameEngine {
   private update(deltaTime: number): void {
     // Update player position based on input
     updatePlayer(this.state.player, this.state.input, deltaTime, this.config, this.state.upgrades);
+
+    // Check tree collisions for player
+    this.handleTreeCollisions(this.state.player.position, 6);
 
     // Update camera to follow player
     updateCamera(this.state.camera, this.state.player);
@@ -642,6 +646,9 @@ export class GameEngine {
       // Apply velocity
       worker.position.x += worker.velocity.x * deltaTime;
       worker.position.y += worker.velocity.y * deltaTime;
+
+      // Check tree collisions for worker
+      this.handleTreeCollisions(worker.position, 5);
     }
   }
 
@@ -671,6 +678,31 @@ export class GameEngine {
     }
 
     return nearest;
+  }
+
+  private handleTreeCollisions(position: { x: number; y: number }, entityRadius: number): void {
+    for (const chunk of this.state.chunks.values()) {
+      for (const tree of chunk.trees) {
+        if (tree.isDead) continue;
+
+        const treeRadius = TREE_STATS[tree.type].hitboxRadius;
+        const minDist = entityRadius + treeRadius;
+
+        const dx = position.x - tree.x;
+        const dy = position.y - tree.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist < minDist && dist > 0) {
+          // Push entity out of tree
+          const overlap = minDist - dist;
+          const pushX = (dx / dist) * overlap;
+          const pushY = (dy / dist) * overlap;
+
+          position.x += pushX;
+          position.y += pushY;
+        }
+      }
+    }
   }
 
   private findNearestWoodDrop(x: number, y: number, maxRange: number): WoodDrop | null {

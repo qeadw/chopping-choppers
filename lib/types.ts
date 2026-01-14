@@ -40,12 +40,12 @@ export enum TreeType {
   DeadTree = 3,
 }
 
-// Wood value and health by tree type
-export const TREE_STATS: Record<TreeType, { health: number; woodDrop: number }> = {
-  [TreeType.SmallPine]: { health: 2, woodDrop: 1 },
-  [TreeType.LargePine]: { health: 4, woodDrop: 3 },
-  [TreeType.Oak]: { health: 5, woodDrop: 4 },
-  [TreeType.DeadTree]: { health: 1, woodDrop: 1 },
+// Wood value, health, and hitbox by tree type
+export const TREE_STATS: Record<TreeType, { health: number; woodDrop: number; hitboxRadius: number }> = {
+  [TreeType.SmallPine]: { health: 2, woodDrop: 1, hitboxRadius: 6 },
+  [TreeType.LargePine]: { health: 4, woodDrop: 3, hitboxRadius: 8 },
+  [TreeType.Oak]: { health: 5, woodDrop: 4, hitboxRadius: 10 },
+  [TreeType.DeadTree]: { health: 1, woodDrop: 1, hitboxRadius: 5 },
 };
 
 export interface WoodDrop {
@@ -197,7 +197,7 @@ export interface GameConfig {
 
 export const DEFAULT_CONFIG: GameConfig = {
   chunkSize: 512,
-  treeCount: 50,  // Much denser forest!
+  treeCount: 225,  // 15x original density!
   playerSpeed: 150,
   renderDistance: 2,
   pixelScale: 3,
