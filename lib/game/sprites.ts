@@ -1,30 +1,82 @@
 import { SpriteSheet, TreeType } from '../types';
 
-// Color palette
+// Enhanced color palette with proper shading
 const COLORS = {
-  trunk: ['#8B4513', '#654321', '#5D3A1A'],
-  foliage: {
-    pine: ['#228B22', '#006400', '#2E8B57', '#1E7B1E'],
-    oak: ['#2E8B57', '#3CB371', '#228B22'],
-    dead: ['#696969', '#808080', '#5C4033'],
+  trunk: {
+    base: '#8B5A2B',
+    dark: '#5D3A1A',
+    light: '#A67C52',
+    highlight: '#C4956A',
+  },
+  pine: {
+    darkest: '#1B4D2E',
+    dark: '#2D6B3F',
+    base: '#3D8B4F',
+    light: '#5AAD6A',
+    highlight: '#7BC98A',
+    snow: '#E8F4EC',
+  },
+  oak: {
+    darkest: '#1E5631',
+    dark: '#2E7D46',
+    base: '#4A9E5C',
+    light: '#6BBF7A',
+    highlight: '#8DD99A',
+  },
+  dead: {
+    dark: '#3D3028',
+    base: '#5C4A3D',
+    light: '#7A6555',
+    highlight: '#98816E',
   },
   player: {
     skin: '#FFDAB9',
-    shirt: '#DC143C',
-    pants: '#1E3A5F',
+    skinShadow: '#E5B894',
+    skinHighlight: '#FFE8D0',
     hair: '#4A3728',
+    hairHighlight: '#6B5344',
+    // Red plaid shirt
+    shirtRed: '#C41E3A',
+    shirtRedDark: '#8B1428',
+    shirtRedLight: '#E63950',
+    shirtBlack: '#2A2A2A',
+    // Blue jeans
+    pants: '#3D5A80',
+    pantsDark: '#2A3F5A',
+    pantsLight: '#5A7AA0',
+    // Boots
     boots: '#3D2314',
+    bootsDark: '#2A1810',
+    bootsLight: '#5A3A28',
+    // Beard
+    beard: '#5C4033',
+    beardLight: '#7A5A48',
   },
-  wood: ['#8B4513', '#A0522D', '#CD853F'],
+  wood: {
+    dark: '#6B4423',
+    base: '#8B5A2B',
+    light: '#A67C52',
+    ring: '#D4A574',
+  },
   chipper: {
     body: '#4A4A4A',
+    bodyDark: '#333333',
+    bodyLight: '#5A5A5A',
     accent: '#FF6600',
-    metal: '#707070',
+    accentDark: '#CC5200',
+    accentLight: '#FF8533',
+    metal: '#888888',
+    metalDark: '#666666',
+    metalLight: '#AAAAAA',
   },
   axe: {
-    handle: '#8B4513',
-    blade: '#C0C0C0',
-    edge: '#E0E0E0',
+    handle: '#6B4423',
+    handleDark: '#4A2F18',
+    handleLight: '#8B5A2B',
+    blade: '#A8A8A8',
+    bladeDark: '#787878',
+    bladeLight: '#D0D0D0',
+    edge: '#E8E8E8',
   },
 };
 
@@ -40,85 +92,131 @@ function setPixel(ctx: CanvasRenderingContext2D, x: number, y: number, color: st
   ctx.fillRect(x, y, 1, 1);
 }
 
-function createSmallPineSprite(): HTMLCanvasElement {
-  const canvas = createCanvas(12, 20);
-  const ctx = canvas.getContext('2d')!;
+// Helper to draw a filled rectangle
+function fillRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, color: string) {
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, w, h);
+}
 
-  // Trunk
-  const trunkColor = COLORS.trunk[0];
-  for (let y = 14; y < 20; y++) {
-    setPixel(ctx, 5, y, trunkColor);
-    setPixel(ctx, 6, y, trunkColor);
+function createSmallPineSprite(): HTMLCanvasElement {
+  const canvas = createCanvas(16, 24);
+  const ctx = canvas.getContext('2d')!;
+  const { darkest, dark, base, light, highlight } = COLORS.pine;
+  const trunk = COLORS.trunk;
+
+  // Trunk with shading
+  for (let y = 18; y < 24; y++) {
+    setPixel(ctx, 6, y, trunk.dark);
+    setPixel(ctx, 7, y, trunk.base);
+    setPixel(ctx, 8, y, trunk.base);
+    setPixel(ctx, 9, y, trunk.light);
   }
 
-  // Foliage - triangular pine shape
-  const green = COLORS.foliage.pine[0];
-  const darkGreen = COLORS.foliage.pine[1];
-
-  // Top
-  setPixel(ctx, 5, 0, green);
-  setPixel(ctx, 6, 0, green);
+  // Pine layers from top to bottom with proper shading
+  // Top point
+  setPixel(ctx, 7, 2, dark);
+  setPixel(ctx, 8, 2, base);
 
   // Layer 1
-  for (let x = 4; x <= 7; x++) setPixel(ctx, x, 1, green);
-  for (let x = 4; x <= 7; x++) setPixel(ctx, x, 2, x < 6 ? darkGreen : green);
+  for (let x = 6; x <= 9; x++) {
+    setPixel(ctx, x, 3, x < 8 ? dark : base);
+    setPixel(ctx, x, 4, x < 8 ? darkest : dark);
+  }
 
   // Layer 2
-  for (let x = 3; x <= 8; x++) setPixel(ctx, x, 3, green);
-  for (let x = 3; x <= 8; x++) setPixel(ctx, x, 4, x < 6 ? darkGreen : green);
-  for (let x = 3; x <= 8; x++) setPixel(ctx, x, 5, green);
+  for (let x = 5; x <= 10; x++) {
+    const shade = x < 7 ? darkest : x < 9 ? dark : base;
+    setPixel(ctx, x, 5, shade);
+    setPixel(ctx, x, 6, x < 7 ? dark : x < 9 ? base : light);
+  }
+  // Highlight clusters
+  setPixel(ctx, 9, 5, light);
+  setPixel(ctx, 10, 6, highlight);
 
   // Layer 3
-  for (let x = 2; x <= 9; x++) setPixel(ctx, x, 6, green);
-  for (let x = 2; x <= 9; x++) setPixel(ctx, x, 7, x < 6 ? darkGreen : green);
-  for (let x = 2; x <= 9; x++) setPixel(ctx, x, 8, green);
+  for (let x = 4; x <= 11; x++) {
+    const shade = x < 6 ? darkest : x < 9 ? dark : base;
+    setPixel(ctx, x, 7, shade);
+    setPixel(ctx, x, 8, x < 6 ? dark : x < 9 ? base : light);
+    setPixel(ctx, x, 9, x < 7 ? darkest : x < 9 ? dark : base);
+  }
+  setPixel(ctx, 10, 7, light);
+  setPixel(ctx, 11, 8, highlight);
 
   // Layer 4
-  for (let x = 1; x <= 10; x++) setPixel(ctx, x, 9, green);
-  for (let x = 1; x <= 10; x++) setPixel(ctx, x, 10, x < 6 ? darkGreen : green);
-  for (let x = 1; x <= 10; x++) setPixel(ctx, x, 11, green);
+  for (let x = 3; x <= 12; x++) {
+    const shade = x < 6 ? darkest : x < 9 ? dark : base;
+    setPixel(ctx, x, 10, shade);
+    setPixel(ctx, x, 11, x < 6 ? dark : x < 9 ? base : light);
+    setPixel(ctx, x, 12, x < 7 ? darkest : x < 9 ? dark : base);
+  }
+  setPixel(ctx, 11, 10, light);
+  setPixel(ctx, 12, 11, highlight);
 
   // Bottom layer
-  for (let x = 0; x <= 11; x++) setPixel(ctx, x, 12, green);
-  for (let x = 0; x <= 11; x++) setPixel(ctx, x, 13, darkGreen);
+  for (let x = 2; x <= 13; x++) {
+    const shade = x < 6 ? darkest : x < 9 ? dark : base;
+    setPixel(ctx, x, 13, shade);
+    setPixel(ctx, x, 14, x < 6 ? dark : x < 9 ? base : light);
+    setPixel(ctx, x, 15, x < 7 ? darkest : x < 9 ? dark : base);
+    setPixel(ctx, x, 16, x < 6 ? darkest : x < 8 ? dark : darkest);
+    setPixel(ctx, x, 17, darkest);
+  }
+  setPixel(ctx, 12, 13, light);
+  setPixel(ctx, 13, 14, highlight);
 
   return canvas;
 }
 
 function createLargePineSprite(): HTMLCanvasElement {
-  const canvas = createCanvas(16, 32);
+  const canvas = createCanvas(20, 36);
   const ctx = canvas.getContext('2d')!;
+  const { darkest, dark, base, light, highlight } = COLORS.pine;
+  const trunk = COLORS.trunk;
 
-  // Trunk
-  const trunkColor = COLORS.trunk[1];
-  for (let y = 24; y < 32; y++) {
-    for (let x = 6; x <= 9; x++) {
-      setPixel(ctx, x, y, trunkColor);
-    }
+  // Trunk with shading
+  for (let y = 28; y < 36; y++) {
+    setPixel(ctx, 8, y, trunk.dark);
+    setPixel(ctx, 9, y, trunk.base);
+    setPixel(ctx, 10, y, trunk.base);
+    setPixel(ctx, 11, y, trunk.light);
   }
 
-  const green = COLORS.foliage.pine[2];
-  const darkGreen = COLORS.foliage.pine[1];
-
-  // Build layered pine tree
+  // Build tree layers
   const layers = [
-    { y: 0, width: 2 },
-    { y: 2, width: 4 },
-    { y: 5, width: 6 },
-    { y: 8, width: 8 },
-    { y: 11, width: 10 },
-    { y: 14, width: 12 },
-    { y: 17, width: 14 },
-    { y: 20, width: 16 },
+    { y: 2, halfWidth: 1 },
+    { y: 4, halfWidth: 2 },
+    { y: 7, halfWidth: 3 },
+    { y: 10, halfWidth: 4 },
+    { y: 13, halfWidth: 5 },
+    { y: 16, halfWidth: 6 },
+    { y: 19, halfWidth: 7 },
+    { y: 22, halfWidth: 8 },
+    { y: 25, halfWidth: 9 },
   ];
 
-  layers.forEach(layer => {
-    const startX = (16 - layer.width) / 2;
-    for (let dy = 0; dy < 3; dy++) {
-      for (let x = startX; x < startX + layer.width; x++) {
-        const color = x < 8 && dy === 1 ? darkGreen : green;
-        setPixel(ctx, x, layer.y + dy, color);
+  layers.forEach((layer, idx) => {
+    const centerX = 10;
+    for (let dx = -layer.halfWidth; dx <= layer.halfWidth; dx++) {
+      const x = centerX + dx;
+      for (let dy = 0; dy < 3; dy++) {
+        const y = layer.y + dy;
+        // Shading based on position
+        let color: string;
+        if (dx < -layer.halfWidth / 2) {
+          color = dy === 1 ? dark : darkest;
+        } else if (dx < layer.halfWidth / 2) {
+          color = dy === 0 ? dark : dy === 1 ? base : dark;
+        } else {
+          color = dy === 1 ? light : base;
+        }
+        setPixel(ctx, x, y, color);
       }
+    }
+    // Add highlight clusters on right side
+    if (layer.halfWidth > 2) {
+      setPixel(ctx, centerX + layer.halfWidth - 1, layer.y, highlight);
+      setPixel(ctx, centerX + layer.halfWidth, layer.y + 1, light);
     }
   });
 
@@ -126,389 +224,553 @@ function createLargePineSprite(): HTMLCanvasElement {
 }
 
 function createOakSprite(): HTMLCanvasElement {
-  const canvas = createCanvas(20, 24);
+  const canvas = createCanvas(24, 28);
   const ctx = canvas.getContext('2d')!;
+  const { darkest, dark, base, light, highlight } = COLORS.oak;
+  const trunk = COLORS.trunk;
 
-  // Trunk
-  const trunkColor = COLORS.trunk[2];
-  for (let y = 16; y < 24; y++) {
-    for (let x = 8; x <= 11; x++) {
-      setPixel(ctx, x, y, trunkColor);
+  // Trunk with shading and roots
+  for (let y = 20; y < 28; y++) {
+    const width = y > 25 ? 6 : 4;
+    const startX = 10 - width / 2;
+    for (let x = startX; x < startX + width; x++) {
+      const relX = x - startX;
+      if (relX === 0) setPixel(ctx, x, y, trunk.dark);
+      else if (relX === width - 1) setPixel(ctx, x, y, trunk.highlight);
+      else if (relX < width / 2) setPixel(ctx, x, y, trunk.base);
+      else setPixel(ctx, x, y, trunk.light);
     }
   }
 
-  const green = COLORS.foliage.oak[0];
-  const lightGreen = COLORS.foliage.oak[1];
+  // Round canopy with organic shape
+  const centerX = 12;
+  const centerY = 10;
 
-  // Round canopy
-  const centerX = 10;
-  const centerY = 8;
-  const radius = 8;
-
-  for (let y = 0; y < 17; y++) {
-    for (let x = 0; x < 20; x++) {
+  // Draw irregular canopy
+  for (let y = 0; y < 21; y++) {
+    for (let x = 0; x < 24; x++) {
       const dx = x - centerX;
       const dy = y - centerY;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist <= radius) {
-        const color = dy < 0 && dx > 0 ? lightGreen : green;
+      // Squashed ellipse with noise
+      const distX = dx / 10;
+      const distY = dy / 8;
+      const dist = Math.sqrt(distX * distX + distY * distY);
+
+      // Add irregularity
+      const noise = Math.sin(x * 1.5) * 0.1 + Math.cos(y * 1.3) * 0.1;
+
+      if (dist + noise < 1) {
+        // Determine shade based on position (light from top-right)
+        let color: string;
+        if (dx < -3 && dy > 0) {
+          color = darkest;
+        } else if (dx < 0 || dy > 2) {
+          color = dark;
+        } else if (dx > 3 && dy < -2) {
+          color = highlight;
+        } else if (dx > 0 && dy < 0) {
+          color = light;
+        } else {
+          color = base;
+        }
         setPixel(ctx, x, y, color);
       }
     }
   }
 
+  // Add leaf cluster details
+  const clusters = [
+    { x: 16, y: 4, c: highlight },
+    { x: 18, y: 6, c: light },
+    { x: 17, y: 8, c: highlight },
+    { x: 5, y: 12, c: darkest },
+    { x: 4, y: 14, c: darkest },
+    { x: 6, y: 16, c: dark },
+  ];
+  clusters.forEach(({ x, y, c }) => setPixel(ctx, x, y, c));
+
   return canvas;
 }
 
 function createDeadTreeSprite(): HTMLCanvasElement {
-  const canvas = createCanvas(14, 24);
+  const canvas = createCanvas(18, 28);
   const ctx = canvas.getContext('2d')!;
-
-  const wood = COLORS.foliage.dead[2];
-  const gray = COLORS.foliage.dead[0];
+  const { dark, base, light, highlight } = COLORS.dead;
 
   // Main trunk
-  for (let y = 8; y < 24; y++) {
-    setPixel(ctx, 6, y, wood);
-    setPixel(ctx, 7, y, wood);
+  for (let y = 10; y < 28; y++) {
+    setPixel(ctx, 8, y, dark);
+    setPixel(ctx, 9, y, base);
+    setPixel(ctx, 10, y, light);
   }
 
-  // Branches
-  // Left branch
-  for (let i = 0; i < 5; i++) {
-    setPixel(ctx, 5 - i, 10 - i, gray);
-    setPixel(ctx, 4 - i, 10 - i, gray);
+  // Top of trunk
+  for (let y = 4; y < 10; y++) {
+    setPixel(ctx, 8, y, dark);
+    setPixel(ctx, 9, y, base);
+  }
+  setPixel(ctx, 9, 3, dark);
+
+  // Left branch (reaching up-left)
+  const leftBranch = [
+    [7, 8], [6, 7], [5, 6], [4, 5], [3, 4], [2, 3], [1, 2],
+  ];
+  leftBranch.forEach(([x, y]) => {
+    setPixel(ctx, x, y, dark);
+    setPixel(ctx, x, y + 1, base);
+  });
+  // Branch tip
+  setPixel(ctx, 0, 1, dark);
+  setPixel(ctx, 0, 2, base);
+
+  // Right branch (reaching up-right)
+  const rightBranch = [
+    [11, 9], [12, 8], [13, 7], [14, 6], [15, 5],
+  ];
+  rightBranch.forEach(([x, y]) => {
+    setPixel(ctx, x, y, base);
+    setPixel(ctx, x, y + 1, light);
+  });
+  setPixel(ctx, 16, 4, base);
+  setPixel(ctx, 17, 3, light);
+
+  // Small left branch
+  setPixel(ctx, 7, 14, dark);
+  setPixel(ctx, 6, 13, dark);
+  setPixel(ctx, 5, 12, base);
+
+  // Small right branch
+  setPixel(ctx, 11, 16, base);
+  setPixel(ctx, 12, 15, light);
+  setPixel(ctx, 13, 14, highlight);
+
+  return canvas;
+}
+
+// Stump sprites
+function createSmallStumpSprite(): HTMLCanvasElement {
+  const canvas = createCanvas(16, 10);
+  const ctx = canvas.getContext('2d')!;
+  const trunk = COLORS.trunk;
+  const wood = COLORS.wood;
+
+  // Stump sides
+  for (let y = 4; y < 10; y++) {
+    for (let x = 5; x <= 10; x++) {
+      if (x === 5) setPixel(ctx, x, y, trunk.dark);
+      else if (x === 10) setPixel(ctx, x, y, trunk.highlight);
+      else if (x < 8) setPixel(ctx, x, y, trunk.base);
+      else setPixel(ctx, x, y, trunk.light);
+    }
   }
 
-  // Right branch
-  for (let i = 0; i < 4; i++) {
-    setPixel(ctx, 8 + i, 8 - i, gray);
-    setPixel(ctx, 9 + i, 8 - i, gray);
+  // Top surface with rings
+  for (let x = 5; x <= 10; x++) {
+    setPixel(ctx, x, 3, wood.base);
+    setPixel(ctx, x, 4, wood.light);
+  }
+  // Ring detail
+  setPixel(ctx, 7, 3, wood.ring);
+  setPixel(ctx, 8, 4, wood.ring);
+
+  return canvas;
+}
+
+function createLargeStumpSprite(): HTMLCanvasElement {
+  const canvas = createCanvas(20, 12);
+  const ctx = canvas.getContext('2d')!;
+  const trunk = COLORS.trunk;
+  const wood = COLORS.wood;
+
+  // Stump sides
+  for (let y = 4; y < 12; y++) {
+    for (let x = 6; x <= 13; x++) {
+      if (x <= 7) setPixel(ctx, x, y, trunk.dark);
+      else if (x >= 12) setPixel(ctx, x, y, trunk.highlight);
+      else if (x < 10) setPixel(ctx, x, y, trunk.base);
+      else setPixel(ctx, x, y, trunk.light);
+    }
   }
 
-  // Small branch left
-  for (let i = 0; i < 3; i++) {
-    setPixel(ctx, 5 - i, 14 - i, gray);
+  // Top surface with rings
+  for (let x = 6; x <= 13; x++) {
+    setPixel(ctx, x, 2, wood.dark);
+    setPixel(ctx, x, 3, wood.base);
+    setPixel(ctx, x, 4, wood.light);
+  }
+  // Ring details
+  setPixel(ctx, 8, 3, wood.ring);
+  setPixel(ctx, 9, 3, wood.ring);
+  setPixel(ctx, 10, 3, wood.ring);
+  setPixel(ctx, 9, 4, wood.ring);
+
+  return canvas;
+}
+
+function createOakStumpSprite(): HTMLCanvasElement {
+  const canvas = createCanvas(24, 12);
+  const ctx = canvas.getContext('2d')!;
+  const trunk = COLORS.trunk;
+  const wood = COLORS.wood;
+
+  // Stump sides
+  for (let y = 4; y < 12; y++) {
+    for (let x = 8; x <= 15; x++) {
+      if (x <= 9) setPixel(ctx, x, y, trunk.dark);
+      else if (x >= 14) setPixel(ctx, x, y, trunk.highlight);
+      else if (x < 12) setPixel(ctx, x, y, trunk.base);
+      else setPixel(ctx, x, y, trunk.light);
+    }
   }
 
-  // Top
-  for (let y = 0; y < 8; y++) {
-    setPixel(ctx, 6, y, wood);
-    setPixel(ctx, 7, y, wood);
+  // Top surface with rings
+  for (let x = 8; x <= 15; x++) {
+    setPixel(ctx, x, 2, wood.dark);
+    setPixel(ctx, x, 3, wood.base);
+    setPixel(ctx, x, 4, wood.light);
+  }
+  // Ring details
+  setPixel(ctx, 10, 3, wood.ring);
+  setPixel(ctx, 11, 3, wood.ring);
+  setPixel(ctx, 12, 3, wood.ring);
+  setPixel(ctx, 11, 4, wood.ring);
+
+  return canvas;
+}
+
+function createDeadStumpSprite(): HTMLCanvasElement {
+  const canvas = createCanvas(18, 10);
+  const ctx = canvas.getContext('2d')!;
+  const { dark, base, light } = COLORS.dead;
+
+  for (let y = 4; y < 10; y++) {
+    setPixel(ctx, 8, y, dark);
+    setPixel(ctx, 9, y, base);
+    setPixel(ctx, 10, y, light);
   }
 
   return canvas;
 }
 
 function createPlayerSprite(): HTMLCanvasElement {
-  const canvas = createCanvas(12, 18);
+  const canvas = createCanvas(14, 20);
   const ctx = canvas.getContext('2d')!;
+  const p = COLORS.player;
 
-  const { skin, shirt, pants, hair, boots } = COLORS.player;
+  // Hair (with volume)
+  fillRect(ctx, 5, 0, 4, 2, p.hair);
+  setPixel(ctx, 4, 1, p.hair);
+  setPixel(ctx, 9, 1, p.hair);
+  setPixel(ctx, 6, 0, p.hairHighlight);
 
-  // Hair/head top
-  for (let x = 4; x <= 7; x++) {
-    setPixel(ctx, x, 0, hair);
-    setPixel(ctx, x, 1, hair);
+  // Face with shading
+  for (let y = 2; y < 5; y++) {
+    for (let x = 5; x <= 8; x++) {
+      if (x === 5) setPixel(ctx, x, y, p.skinShadow);
+      else if (x === 8) setPixel(ctx, x, y, p.skinHighlight);
+      else setPixel(ctx, x, y, p.skin);
+    }
   }
 
-  // Face
-  for (let x = 4; x <= 7; x++) {
-    setPixel(ctx, x, 2, skin);
-    setPixel(ctx, x, 3, skin);
-  }
   // Eyes
-  setPixel(ctx, 5, 2, '#000');
-  setPixel(ctx, 6, 2, '#000');
+  setPixel(ctx, 6, 2, '#2B3A4D');
+  setPixel(ctx, 7, 2, '#2B3A4D');
+  // Eye highlights
+  setPixel(ctx, 6, 2, '#FFFFFF');
 
-  // Shirt/body
-  for (let y = 4; y <= 9; y++) {
-    for (let x = 3; x <= 8; x++) {
-      setPixel(ctx, x, y, shirt);
+  // Beard
+  for (let x = 5; x <= 8; x++) {
+    setPixel(ctx, x, 4, x < 7 ? p.beard : p.beardLight);
+    setPixel(ctx, x, 5, p.beard);
+  }
+  setPixel(ctx, 6, 6, p.beard);
+  setPixel(ctx, 7, 6, p.beardLight);
+
+  // Plaid shirt body
+  for (let y = 5; y <= 11; y++) {
+    for (let x = 4; x <= 9; x++) {
+      // Create plaid pattern
+      const isVerticalStripe = x === 5 || x === 8;
+      const isHorizontalStripe = y === 7 || y === 10;
+
+      if (isVerticalStripe && isHorizontalStripe) {
+        setPixel(ctx, x, y, p.shirtBlack);
+      } else if (isVerticalStripe || isHorizontalStripe) {
+        setPixel(ctx, x, y, p.shirtRedDark);
+      } else if (x <= 5) {
+        setPixel(ctx, x, y, p.shirtRedDark);
+      } else if (x >= 8) {
+        setPixel(ctx, x, y, p.shirtRedLight);
+      } else {
+        setPixel(ctx, x, y, p.shirtRed);
+      }
     }
   }
 
-  // Arms
-  setPixel(ctx, 2, 5, skin);
-  setPixel(ctx, 2, 6, skin);
-  setPixel(ctx, 9, 5, skin);
-  setPixel(ctx, 9, 6, skin);
+  // Arms (skin)
+  setPixel(ctx, 3, 6, p.skinShadow);
+  setPixel(ctx, 3, 7, p.skin);
+  setPixel(ctx, 10, 6, p.skin);
+  setPixel(ctx, 10, 7, p.skinHighlight);
 
-  // Pants
-  for (let y = 10; y <= 14; y++) {
-    for (let x = 3; x <= 5; x++) {
-      setPixel(ctx, x, y, pants);
-    }
-    for (let x = 6; x <= 8; x++) {
-      setPixel(ctx, x, y, pants);
-    }
+  // Jeans with shading
+  for (let y = 12; y <= 16; y++) {
+    // Left leg
+    setPixel(ctx, 4, y, p.pantsDark);
+    setPixel(ctx, 5, y, p.pants);
+    setPixel(ctx, 6, y, p.pantsLight);
+    // Right leg
+    setPixel(ctx, 7, y, p.pantsDark);
+    setPixel(ctx, 8, y, p.pants);
+    setPixel(ctx, 9, y, p.pantsLight);
   }
 
-  // Boots
-  for (let x = 3; x <= 5; x++) {
-    setPixel(ctx, x, 15, boots);
-    setPixel(ctx, x, 16, boots);
-    setPixel(ctx, x, 17, boots);
-  }
-  for (let x = 6; x <= 8; x++) {
-    setPixel(ctx, x, 15, boots);
-    setPixel(ctx, x, 16, boots);
-    setPixel(ctx, x, 17, boots);
-  }
-
-  return canvas;
-}
-
-// Stump sprites for cut trees
-function createSmallStumpSprite(): HTMLCanvasElement {
-  const canvas = createCanvas(12, 8);
-  const ctx = canvas.getContext('2d')!;
-  const trunkColor = COLORS.trunk[0];
-  const innerColor = COLORS.wood[2];
-
-  // Stump base
-  for (let y = 4; y < 8; y++) {
-    for (let x = 4; x <= 7; x++) {
-      setPixel(ctx, x, y, trunkColor);
-    }
-  }
-  // Top surface
-  for (let x = 4; x <= 7; x++) {
-    setPixel(ctx, x, 3, innerColor);
-    setPixel(ctx, x, 4, innerColor);
-  }
-
-  return canvas;
-}
-
-function createLargeStumpSprite(): HTMLCanvasElement {
-  const canvas = createCanvas(16, 10);
-  const ctx = canvas.getContext('2d')!;
-  const trunkColor = COLORS.trunk[1];
-  const innerColor = COLORS.wood[2];
-
-  // Stump base
-  for (let y = 4; y < 10; y++) {
-    for (let x = 5; x <= 10; x++) {
-      setPixel(ctx, x, y, trunkColor);
-    }
-  }
-  // Top surface
-  for (let x = 5; x <= 10; x++) {
-    for (let y = 3; y <= 5; y++) {
-      setPixel(ctx, x, y, innerColor);
-    }
-  }
-
-  return canvas;
-}
-
-function createOakStumpSprite(): HTMLCanvasElement {
-  const canvas = createCanvas(20, 10);
-  const ctx = canvas.getContext('2d')!;
-  const trunkColor = COLORS.trunk[2];
-  const innerColor = COLORS.wood[2];
-
-  // Stump base
-  for (let y = 4; y < 10; y++) {
-    for (let x = 7; x <= 12; x++) {
-      setPixel(ctx, x, y, trunkColor);
-    }
-  }
-  // Top surface
-  for (let x = 7; x <= 12; x++) {
-    for (let y = 3; y <= 5; y++) {
-      setPixel(ctx, x, y, innerColor);
-    }
-  }
-
-  return canvas;
-}
-
-function createDeadStumpSprite(): HTMLCanvasElement {
-  const canvas = createCanvas(14, 8);
-  const ctx = canvas.getContext('2d')!;
-  const wood = COLORS.foliage.dead[2];
-
-  for (let y = 4; y < 8; y++) {
-    setPixel(ctx, 6, y, wood);
-    setPixel(ctx, 7, y, wood);
+  // Boots with shading
+  for (let y = 17; y <= 19; y++) {
+    // Left boot
+    setPixel(ctx, 4, y, p.bootsDark);
+    setPixel(ctx, 5, y, p.boots);
+    setPixel(ctx, 6, y, p.bootsLight);
+    // Right boot
+    setPixel(ctx, 7, y, p.bootsDark);
+    setPixel(ctx, 8, y, p.boots);
+    setPixel(ctx, 9, y, p.bootsLight);
   }
 
   return canvas;
 }
 
 function createPlayerChopSprite(): HTMLCanvasElement {
-  const canvas = createCanvas(16, 18);
+  const canvas = createCanvas(20, 20);
   const ctx = canvas.getContext('2d')!;
+  const p = COLORS.player;
+  const a = COLORS.axe;
 
-  const { skin, shirt, pants, hair, boots } = COLORS.player;
-
-  // Same body as regular player but with arm extended
-  // Hair/head top
-  for (let x = 4; x <= 7; x++) {
-    setPixel(ctx, x, 0, hair);
-    setPixel(ctx, x, 1, hair);
-  }
+  // Hair
+  fillRect(ctx, 5, 0, 4, 2, p.hair);
+  setPixel(ctx, 4, 1, p.hair);
+  setPixel(ctx, 9, 1, p.hair);
+  setPixel(ctx, 6, 0, p.hairHighlight);
 
   // Face
-  for (let x = 4; x <= 7; x++) {
-    setPixel(ctx, x, 2, skin);
-    setPixel(ctx, x, 3, skin);
+  for (let y = 2; y < 5; y++) {
+    for (let x = 5; x <= 8; x++) {
+      if (x === 5) setPixel(ctx, x, y, p.skinShadow);
+      else if (x === 8) setPixel(ctx, x, y, p.skinHighlight);
+      else setPixel(ctx, x, y, p.skin);
+    }
   }
-  setPixel(ctx, 5, 2, '#000');
-  setPixel(ctx, 6, 2, '#000');
+  setPixel(ctx, 6, 2, '#2B3A4D');
+  setPixel(ctx, 7, 2, '#2B3A4D');
 
-  // Shirt/body
-  for (let y = 4; y <= 9; y++) {
-    for (let x = 3; x <= 8; x++) {
-      setPixel(ctx, x, y, shirt);
+  // Beard
+  for (let x = 5; x <= 8; x++) {
+    setPixel(ctx, x, 4, x < 7 ? p.beard : p.beardLight);
+    setPixel(ctx, x, 5, p.beard);
+  }
+  setPixel(ctx, 6, 6, p.beard);
+  setPixel(ctx, 7, 6, p.beardLight);
+
+  // Shirt (same plaid pattern)
+  for (let y = 5; y <= 11; y++) {
+    for (let x = 4; x <= 9; x++) {
+      const isVerticalStripe = x === 5 || x === 8;
+      const isHorizontalStripe = y === 7 || y === 10;
+
+      if (isVerticalStripe && isHorizontalStripe) {
+        setPixel(ctx, x, y, p.shirtBlack);
+      } else if (isVerticalStripe || isHorizontalStripe) {
+        setPixel(ctx, x, y, p.shirtRedDark);
+      } else if (x <= 5) {
+        setPixel(ctx, x, y, p.shirtRedDark);
+      } else if (x >= 8) {
+        setPixel(ctx, x, y, p.shirtRedLight);
+      } else {
+        setPixel(ctx, x, y, p.shirtRed);
+      }
     }
   }
 
-  // Extended arm with axe swing
-  setPixel(ctx, 9, 4, skin);
-  setPixel(ctx, 10, 3, skin);
-  setPixel(ctx, 11, 2, skin);
-  // Axe
-  setPixel(ctx, 12, 1, COLORS.axe.blade);
-  setPixel(ctx, 13, 1, COLORS.axe.blade);
-  setPixel(ctx, 14, 1, COLORS.axe.edge);
-  setPixel(ctx, 12, 2, COLORS.axe.blade);
-  setPixel(ctx, 13, 2, COLORS.axe.blade);
-  setPixel(ctx, 14, 2, COLORS.axe.edge);
+  // Extended arm holding axe
+  setPixel(ctx, 10, 5, p.skin);
+  setPixel(ctx, 11, 4, p.skin);
+  setPixel(ctx, 12, 3, p.skinHighlight);
+
+  // Axe handle
+  setPixel(ctx, 13, 2, a.handle);
+  setPixel(ctx, 14, 1, a.handle);
+  setPixel(ctx, 15, 0, a.handleLight);
+
+  // Axe head
+  fillRect(ctx, 16, 0, 3, 4, a.blade);
+  setPixel(ctx, 16, 0, a.bladeDark);
+  setPixel(ctx, 16, 1, a.bladeDark);
+  setPixel(ctx, 18, 0, a.edge);
+  setPixel(ctx, 18, 1, a.edge);
+  setPixel(ctx, 18, 2, a.bladeLight);
+  setPixel(ctx, 18, 3, a.bladeLight);
 
   // Other arm
-  setPixel(ctx, 2, 5, skin);
-  setPixel(ctx, 2, 6, skin);
+  setPixel(ctx, 3, 6, p.skinShadow);
+  setPixel(ctx, 3, 7, p.skin);
 
-  // Pants
-  for (let y = 10; y <= 14; y++) {
-    for (let x = 3; x <= 5; x++) {
-      setPixel(ctx, x, y, pants);
-    }
-    for (let x = 6; x <= 8; x++) {
-      setPixel(ctx, x, y, pants);
-    }
+  // Jeans
+  for (let y = 12; y <= 16; y++) {
+    setPixel(ctx, 4, y, p.pantsDark);
+    setPixel(ctx, 5, y, p.pants);
+    setPixel(ctx, 6, y, p.pantsLight);
+    setPixel(ctx, 7, y, p.pantsDark);
+    setPixel(ctx, 8, y, p.pants);
+    setPixel(ctx, 9, y, p.pantsLight);
   }
 
   // Boots
-  for (let x = 3; x <= 5; x++) {
-    setPixel(ctx, x, 15, boots);
-    setPixel(ctx, x, 16, boots);
-    setPixel(ctx, x, 17, boots);
-  }
-  for (let x = 6; x <= 8; x++) {
-    setPixel(ctx, x, 15, boots);
-    setPixel(ctx, x, 16, boots);
-    setPixel(ctx, x, 17, boots);
+  for (let y = 17; y <= 19; y++) {
+    setPixel(ctx, 4, y, p.bootsDark);
+    setPixel(ctx, 5, y, p.boots);
+    setPixel(ctx, 6, y, p.bootsLight);
+    setPixel(ctx, 7, y, p.bootsDark);
+    setPixel(ctx, 8, y, p.boots);
+    setPixel(ctx, 9, y, p.bootsLight);
   }
 
   return canvas;
 }
 
 function createWoodSprite(): HTMLCanvasElement {
-  const canvas = createCanvas(8, 6);
+  const canvas = createCanvas(10, 8);
   const ctx = canvas.getContext('2d')!;
+  const w = COLORS.wood;
 
-  const dark = COLORS.wood[0];
-  const mid = COLORS.wood[1];
-  const light = COLORS.wood[2];
+  // Log body with shading
+  for (let x = 2; x <= 7; x++) {
+    setPixel(ctx, x, 2, w.dark);
+    setPixel(ctx, x, 3, w.base);
+    setPixel(ctx, x, 4, w.light);
+    setPixel(ctx, x, 5, w.base);
+  }
 
-  // Log shape
-  for (let x = 1; x <= 6; x++) {
-    setPixel(ctx, x, 2, dark);
-    setPixel(ctx, x, 3, mid);
-  }
-  // End circles
-  setPixel(ctx, 0, 2, dark);
-  setPixel(ctx, 0, 3, dark);
-  setPixel(ctx, 7, 2, light);
-  setPixel(ctx, 7, 3, light);
-  // Top/bottom edges
-  for (let x = 2; x <= 5; x++) {
-    setPixel(ctx, x, 1, mid);
-    setPixel(ctx, x, 4, dark);
-  }
+  // Left end (dark, cut surface)
+  setPixel(ctx, 1, 2, w.dark);
+  setPixel(ctx, 1, 3, w.base);
+  setPixel(ctx, 1, 4, w.base);
+  setPixel(ctx, 1, 5, w.dark);
+  setPixel(ctx, 0, 3, w.dark);
+  setPixel(ctx, 0, 4, w.dark);
+
+  // Right end (light, cut surface with ring)
+  setPixel(ctx, 8, 2, w.base);
+  setPixel(ctx, 8, 3, w.light);
+  setPixel(ctx, 8, 4, w.light);
+  setPixel(ctx, 8, 5, w.base);
+  setPixel(ctx, 9, 3, w.ring);
+  setPixel(ctx, 9, 4, w.ring);
+
+  // Ring detail on surface
+  setPixel(ctx, 8, 3, w.ring);
 
   return canvas;
 }
 
 function createChipperSprite(): HTMLCanvasElement {
-  const canvas = createCanvas(32, 24);
+  const canvas = createCanvas(36, 28);
   const ctx = canvas.getContext('2d')!;
+  const c = COLORS.chipper;
 
-  const { body, accent, metal } = COLORS.chipper;
-
-  // Main body
-  for (let y = 8; y < 20; y++) {
-    for (let x = 4; x < 28; x++) {
-      setPixel(ctx, x, y, body);
+  // Main body with shading
+  for (let y = 10; y < 22; y++) {
+    for (let x = 4; x < 32; x++) {
+      if (x < 10) setPixel(ctx, x, y, c.bodyDark);
+      else if (x > 26) setPixel(ctx, x, y, c.bodyLight);
+      else setPixel(ctx, x, y, c.body);
     }
   }
 
-  // Hopper (input)
-  for (let y = 2; y < 8; y++) {
-    for (let x = 8; x < 16; x++) {
-      setPixel(ctx, x, y, metal);
+  // Hopper (input funnel)
+  for (let y = 2; y < 10; y++) {
+    const width = 8 + (10 - y);
+    const startX = 10 - (width - 8) / 2;
+    for (let x = startX; x < startX + width; x++) {
+      if (x < startX + 2) setPixel(ctx, x, y, c.metalDark);
+      else if (x > startX + width - 3) setPixel(ctx, x, y, c.metalLight);
+      else setPixel(ctx, x, y, c.metal);
     }
   }
 
   // Output chute
-  for (let y = 12; y < 18; y++) {
-    for (let x = 24; x < 30; x++) {
-      setPixel(ctx, x, y, metal);
+  for (let y = 14; y < 20; y++) {
+    for (let x = 28; x < 36; x++) {
+      if (x < 30) setPixel(ctx, x, y, c.metalDark);
+      else if (x > 33) setPixel(ctx, x, y, c.metalLight);
+      else setPixel(ctx, x, y, c.metal);
     }
   }
 
   // Accent stripes
-  for (let x = 4; x < 28; x++) {
-    setPixel(ctx, x, 10, accent);
-    setPixel(ctx, x, 11, accent);
+  for (let x = 4; x < 32; x++) {
+    setPixel(ctx, x, 12, c.accentDark);
+    setPixel(ctx, x, 13, c.accent);
+    setPixel(ctx, x, 14, c.accentLight);
   }
 
-  // Wheels
-  for (let x = 6; x <= 9; x++) {
-    for (let y = 20; y <= 23; y++) {
-      setPixel(ctx, x, y, '#222');
+  // Wheels with 3D effect
+  for (let x = 6; x <= 11; x++) {
+    for (let y = 22; y <= 27; y++) {
+      const dx = x - 8.5;
+      const dy = y - 24.5;
+      if (dx * dx + dy * dy <= 9) {
+        if (dx < 0 && dy < 0) setPixel(ctx, x, y, '#444');
+        else if (dx > 0 && dy > 0) setPixel(ctx, x, y, '#111');
+        else setPixel(ctx, x, y, '#222');
+      }
     }
   }
-  for (let x = 22; x <= 25; x++) {
-    for (let y = 20; y <= 23; y++) {
-      setPixel(ctx, x, y, '#222');
+  for (let x = 24; x <= 29; x++) {
+    for (let y = 22; y <= 27; y++) {
+      const dx = x - 26.5;
+      const dy = y - 24.5;
+      if (dx * dx + dy * dy <= 9) {
+        if (dx < 0 && dy < 0) setPixel(ctx, x, y, '#444');
+        else if (dx > 0 && dy > 0) setPixel(ctx, x, y, '#111');
+        else setPixel(ctx, x, y, '#222');
+      }
     }
   }
 
-  // Label
+  // "CHIP" label
   ctx.fillStyle = '#FFF';
-  ctx.font = '6px monospace';
-  ctx.fillText('CHIP', 12, 17);
+  ctx.font = 'bold 7px monospace';
+  ctx.fillText('CHIP', 13, 19);
 
   return canvas;
 }
 
 function createAxeSprite(): HTMLCanvasElement {
-  const canvas = createCanvas(10, 12);
+  const canvas = createCanvas(12, 14);
   const ctx = canvas.getContext('2d')!;
+  const a = COLORS.axe;
 
-  const { handle, blade, edge } = COLORS.axe;
-
-  // Handle
-  for (let y = 4; y < 12; y++) {
-    setPixel(ctx, 4, y, handle);
-    setPixel(ctx, 5, y, handle);
+  // Handle with shading
+  for (let y = 5; y < 14; y++) {
+    setPixel(ctx, 4, y, a.handleDark);
+    setPixel(ctx, 5, y, a.handle);
+    setPixel(ctx, 6, y, a.handleLight);
   }
 
-  // Blade
-  for (let y = 0; y < 6; y++) {
-    for (let x = 5; x < 9; x++) {
-      setPixel(ctx, x, y, blade);
+  // Axe head
+  for (let y = 0; y < 7; y++) {
+    for (let x = 5; x < 11; x++) {
+      if (x < 7) setPixel(ctx, x, y, a.bladeDark);
+      else if (x > 9) setPixel(ctx, x, y, a.edge);
+      else if (x > 8) setPixel(ctx, x, y, a.bladeLight);
+      else setPixel(ctx, x, y, a.blade);
     }
   }
-  // Blade edge
-  for (let y = 0; y < 6; y++) {
-    setPixel(ctx, 9, y, edge);
-  }
+
+  // Handle wrap
+  setPixel(ctx, 4, 6, '#2A2A2A');
+  setPixel(ctx, 5, 6, '#3A3A3A');
+  setPixel(ctx, 6, 6, '#4A4A4A');
 
   return canvas;
 }
