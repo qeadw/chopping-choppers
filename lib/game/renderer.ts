@@ -1,4 +1,4 @@
-import { GameState, SpriteSheet, GameConfig, Tree, WoodDrop, Particle, FloatingText, UPGRADE_COSTS } from '../types';
+import { GameState, SpriteSheet, GameConfig, Tree, WoodDrop, Particle, FloatingText, Worker, WorkerState, UPGRADE_COSTS, WORKER_COSTS } from '../types';
 import { getTreeSprite } from './sprites';
 
 // Ground colors for tiling
@@ -62,6 +62,11 @@ export function render(
 
   if (!playerDrawn) {
     drawPlayer(ctx, state, sprites, config);
+  }
+
+  // Draw workers
+  for (const worker of state.workers) {
+    drawWorker(ctx, worker, camera, sprites, scale);
   }
 
   // Draw wood drops
@@ -188,6 +193,55 @@ function drawPlayer(
   ctx.restore();
 }
 
+function drawWorker(
+  ctx: CanvasRenderingContext2D,
+  worker: Worker,
+  camera: { x: number; y: number },
+  sprites: SpriteSheet,
+  scale: number
+): void {
+  // Choose sprite based on state
+  let sprite: HTMLCanvasElement;
+  if (worker.state === WorkerState.Chopping && worker.chopTimer > 0.3) {
+    sprite = sprites.workerChop;
+  } else if (worker.wood > 0) {
+    sprite = sprites.workerCarry;
+  } else {
+    sprite = sprites.worker;
+  }
+
+  let screenX = (worker.position.x - camera.x - 7) * scale;
+  const screenY = (worker.position.y - camera.y - 10) * scale;
+
+  // Flip sprite based on facing direction
+  ctx.save();
+  if (!worker.facingRight) {
+    ctx.translate(screenX + sprite.width * scale, 0);
+    ctx.scale(-1, 1);
+    screenX = 0;
+  }
+
+  ctx.drawImage(
+    sprite,
+    screenX,
+    screenY,
+    sprite.width * scale,
+    sprite.height * scale
+  );
+
+  ctx.restore();
+
+  // Draw wood count above worker if carrying
+  if (worker.wood > 0) {
+    const textX = (worker.position.x - camera.x) * scale;
+    const textY = (worker.position.y - camera.y - 15) * scale;
+    ctx.fillStyle = '#8B4513';
+    ctx.font = `bold ${8 * scale}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillText(`${worker.wood}`, textX, textY);
+  }
+}
+
 function drawWoodDrop(
   ctx: CanvasRenderingContext2D,
   drop: WoodDrop,
@@ -303,7 +357,7 @@ function drawUI(
 
   // Top-left: Resources panel
   ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-  ctx.fillRect(padding, padding, 180, 80);
+  ctx.fillRect(padding, padding, 180, 100);
 
   ctx.fillStyle = '#fff';
   ctx.font = 'bold 16px monospace';
@@ -315,12 +369,21 @@ function drawUI(
 
   // Money
   ctx.fillStyle = '#FFD700';
-  ctx.fillText(`$${state.money}`, padding + 10, padding + 55);
+  ctx.fillText(`$${state.money}`, padding + 10, padding + 52);
+
+  // Workers
+  ctx.fillStyle = '#5A9C5A';
+  ctx.font = '14px monospace';
+  const nextWorkerCost = WORKER_COSTS[state.workers.length];
+  const workerText = nextWorkerCost !== undefined
+    ? `Workers: ${state.workers.length} [H] $${nextWorkerCost}`
+    : `Workers: ${state.workers.length} (MAX)`;
+  ctx.fillText(workerText, padding + 10, padding + 72);
 
   // Stats
   ctx.fillStyle = '#aaa';
   ctx.font = '11px monospace';
-  ctx.fillText(`Total chopped: ${state.totalWoodChopped}`, padding + 10, padding + 72);
+  ctx.fillText(`Total chopped: ${state.totalWoodChopped}`, padding + 10, padding + 90);
 
   // Top-right: Upgrades panel
   const upgradeWidth = 220;
@@ -368,12 +431,12 @@ function drawUI(
   // Bottom: Controls hint
   ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
   const controlsY = ctx.canvas.height - 35;
-  ctx.fillRect(padding, controlsY, 400, 25);
+  ctx.fillRect(padding, controlsY, 500, 25);
 
   ctx.fillStyle = '#ccc';
   ctx.font = '12px monospace';
   ctx.textAlign = 'left';
-  ctx.fillText('WASD: Move | SPACE/Click: Chop | E: Sell at Chipper | 1-4: Upgrades', padding + 10, controlsY + 16);
+  ctx.fillText('WASD: Move | SPACE/Click: Chop | E: Sell | H: Hire Worker | 1-4: Upgrades', padding + 10, controlsY + 16);
 
   // Capacity warning
   if (state.wood >= state.upgrades.carryCapacity) {

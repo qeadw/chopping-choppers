@@ -7,8 +7,11 @@ import {
   Particle,
   FloatingText,
   Tree,
+  Worker,
+  WorkerState,
   TREE_STATS,
   UPGRADE_COSTS,
+  WORKER_COSTS,
 } from '../types';
 import { createPlayer, updatePlayer, createCamera, updateCamera, canChop, startChop } from './player';
 import { createInputState, setupInputHandlers } from './input';
@@ -17,6 +20,7 @@ import { render } from './renderer';
 import { createSpriteSheet } from './sprites';
 
 let dropIdCounter = 0;
+let workerIdCounter = 0;
 
 export class GameEngine {
   private canvas: HTMLCanvasElement;
@@ -29,6 +33,7 @@ export class GameEngine {
   private cleanupInput: () => void;
   private pendingChop: boolean = false;
   private upgradeKeyHandler: (e: KeyboardEvent) => void;
+  private hireKeyHandler: (e: KeyboardEvent) => void;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -60,13 +65,14 @@ export class GameEngine {
       chipper: {
         x: -50,
         y: -50,
-        width: 32,
-        height: 24,
+        width: 36,
+        height: 28,
       },
       particles: [],
       floatingTexts: [],
       totalWoodChopped: 0,
       totalMoneyEarned: 0,
+      workers: [],
     };
 
     // Generate initial chunks around player
@@ -79,6 +85,14 @@ export class GameEngine {
       }
     };
     window.addEventListener('keydown', this.upgradeKeyHandler);
+
+    // Setup hire worker key handler (H key)
+    this.hireKeyHandler = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() === 'h') {
+        this.hireWorker();
+      }
+    };
+    window.addEventListener('keydown', this.hireKeyHandler);
   }
 
   start(): void {
@@ -93,6 +107,7 @@ export class GameEngine {
     }
     this.cleanupInput();
     window.removeEventListener('keydown', this.upgradeKeyHandler);
+    window.removeEventListener('keydown', this.hireKeyHandler);
   }
 
   resize(width: number, height: number): void {
@@ -141,6 +156,9 @@ export class GameEngine {
 
     // Update wood drop collection
     this.updateWoodDrops(deltaTime);
+
+    // Update workers
+    this.updateWorkers(deltaTime);
 
     // Update particles
     this.updateParticles(deltaTime);
@@ -427,6 +445,256 @@ export class GameEngine {
         this.state.floatingTexts.splice(i, 1);
       }
     }
+  }
+
+  private hireWorker(): void {
+    const workerCount = this.state.workers.length;
+    const cost = WORKER_COSTS[workerCount];
+
+    if (cost === undefined) {
+      this.addFloatingText(this.state.player.position.x, this.state.player.position.y - 30, 'MAX WORKERS!', '#FF6600');
+      return;
+    }
+
+    if (this.state.money < cost) {
+      this.addFloatingText(this.state.player.position.x, this.state.player.position.y - 30, 'Need $' + cost, '#FF4444');
+      return;
+    }
+
+    this.state.money -= cost;
+
+    // Spawn worker near player
+    const worker: Worker = {
+      id: `worker_${workerIdCounter++}`,
+      position: {
+        x: this.state.player.position.x + (Math.random() - 0.5) * 50,
+        y: this.state.player.position.y + (Math.random() - 0.5) * 50,
+      },
+      velocity: { x: 0, y: 0 },
+      state: WorkerState.Idle,
+      targetTree: null,
+      targetDrop: null,
+      wood: 0,
+      chopTimer: 0,
+      facingRight: true,
+      carryCapacity: 10,
+      speed: 80,
+      chopPower: 1,
+    };
+
+    this.state.workers.push(worker);
+    this.addFloatingText(worker.position.x, worker.position.y - 20, 'HIRED!', '#00FF00');
+    this.spawnMoneyParticles(worker.position.x, worker.position.y);
+  }
+
+  private updateWorkers(deltaTime: number): void {
+    const { chipper } = this.state;
+    const chipperCenterX = chipper.x + chipper.width / 2;
+    const chipperCenterY = chipper.y + chipper.height / 2;
+
+    for (const worker of this.state.workers) {
+      // Update chop timer
+      if (worker.chopTimer > 0) {
+        worker.chopTimer -= deltaTime;
+      }
+
+      switch (worker.state) {
+        case WorkerState.Idle:
+          // Look for a tree to chop or wood to collect
+          if (worker.wood < worker.carryCapacity) {
+            // First check for wood drops nearby
+            const nearbyDrop = this.findNearestWoodDrop(worker.position.x, worker.position.y, 200);
+            if (nearbyDrop) {
+              worker.targetDrop = nearbyDrop;
+              worker.state = WorkerState.Collecting;
+            } else {
+              // Find a tree to chop
+              const nearbyTree = this.findNearestTreeForWorker(worker);
+              if (nearbyTree) {
+                worker.targetTree = nearbyTree;
+                worker.state = WorkerState.MovingToTree;
+              }
+            }
+          } else {
+            // Inventory full, go sell
+            worker.state = WorkerState.ReturningToChipper;
+          }
+          break;
+
+        case WorkerState.MovingToTree:
+          if (!worker.targetTree || worker.targetTree.isDead) {
+            worker.state = WorkerState.Idle;
+            worker.targetTree = null;
+            break;
+          }
+
+          // Move toward tree
+          const treeDx = worker.targetTree.x - worker.position.x;
+          const treeDy = worker.targetTree.y - worker.position.y;
+          const treeDist = Math.sqrt(treeDx * treeDx + treeDy * treeDy);
+
+          if (treeDist < 30) {
+            // Close enough to chop
+            worker.state = WorkerState.Chopping;
+            worker.velocity.x = 0;
+            worker.velocity.y = 0;
+          } else {
+            // Move toward tree
+            worker.velocity.x = (treeDx / treeDist) * worker.speed;
+            worker.velocity.y = (treeDy / treeDist) * worker.speed;
+            worker.facingRight = treeDx > 0;
+          }
+          break;
+
+        case WorkerState.Chopping:
+          if (!worker.targetTree || worker.targetTree.isDead) {
+            worker.state = WorkerState.Idle;
+            worker.targetTree = null;
+            break;
+          }
+
+          worker.velocity.x = 0;
+          worker.velocity.y = 0;
+
+          // Chop the tree
+          if (worker.chopTimer <= 0) {
+            worker.chopTimer = 0.6; // Worker chop cooldown
+            const wasDestroyed = damageTree(worker.targetTree, worker.chopPower, this.config);
+
+            this.spawnWoodParticles(worker.targetTree.x, worker.targetTree.y - 20);
+
+            if (wasDestroyed) {
+              const woodAmount = TREE_STATS[worker.targetTree.type].woodDrop;
+              this.spawnWoodDrop(worker.targetTree.x, worker.targetTree.y, woodAmount);
+              this.state.totalWoodChopped += woodAmount;
+              this.spawnTreeFallParticles(worker.targetTree.x, worker.targetTree.y);
+              worker.targetTree = null;
+              worker.state = WorkerState.Idle;
+            }
+          }
+          break;
+
+        case WorkerState.Collecting:
+          if (!worker.targetDrop || worker.targetDrop.amount <= 0) {
+            worker.state = WorkerState.Idle;
+            worker.targetDrop = null;
+            break;
+          }
+
+          // Move toward drop
+          const dropDx = worker.targetDrop.x - worker.position.x;
+          const dropDy = worker.targetDrop.y - worker.position.y;
+          const dropDist = Math.sqrt(dropDx * dropDx + dropDy * dropDy);
+
+          if (dropDist < 20) {
+            // Pick up wood
+            const canCarry = Math.min(worker.targetDrop.amount, worker.carryCapacity - worker.wood);
+            if (canCarry > 0) {
+              worker.wood += canCarry;
+              worker.targetDrop.amount -= canCarry;
+              this.addFloatingText(worker.position.x, worker.position.y - 20, `+${canCarry}`, '#8B4513');
+            }
+            worker.targetDrop = null;
+
+            // If full, return to chipper
+            if (worker.wood >= worker.carryCapacity) {
+              worker.state = WorkerState.ReturningToChipper;
+            } else {
+              worker.state = WorkerState.Idle;
+            }
+          } else {
+            worker.velocity.x = (dropDx / dropDist) * worker.speed;
+            worker.velocity.y = (dropDy / dropDist) * worker.speed;
+            worker.facingRight = dropDx > 0;
+          }
+          break;
+
+        case WorkerState.ReturningToChipper:
+          // Move toward chipper
+          const chipDx = chipperCenterX - worker.position.x;
+          const chipDy = chipperCenterY - worker.position.y;
+          const chipDist = Math.sqrt(chipDx * chipDx + chipDy * chipDy);
+
+          if (chipDist < 40) {
+            worker.state = WorkerState.Selling;
+            worker.velocity.x = 0;
+            worker.velocity.y = 0;
+          } else {
+            worker.velocity.x = (chipDx / chipDist) * worker.speed;
+            worker.velocity.y = (chipDy / chipDist) * worker.speed;
+            worker.facingRight = chipDx > 0;
+          }
+          break;
+
+        case WorkerState.Selling:
+          if (worker.wood > 0) {
+            const earnings = worker.wood * this.config.woodPricePerUnit;
+            this.state.money += earnings;
+            this.state.totalMoneyEarned += earnings;
+            this.addFloatingText(chipperCenterX, chipper.y - 20, `+$${earnings}`, '#FFD700');
+            this.spawnMoneyParticles(chipperCenterX, chipper.y);
+            worker.wood = 0;
+          }
+          worker.state = WorkerState.Idle;
+          break;
+      }
+
+      // Apply velocity
+      worker.position.x += worker.velocity.x * deltaTime;
+      worker.position.y += worker.velocity.y * deltaTime;
+    }
+  }
+
+  private findNearestTreeForWorker(worker: Worker): Tree | null {
+    let nearest: Tree | null = null;
+    let nearestDist = 300; // Worker search range
+
+    for (const chunk of this.state.chunks.values()) {
+      for (const tree of chunk.trees) {
+        if (tree.isDead) continue;
+
+        // Check if another worker is already targeting this tree
+        const alreadyTargeted = this.state.workers.some(
+          w => w !== worker && w.targetTree === tree
+        );
+        if (alreadyTargeted) continue;
+
+        const dx = tree.x - worker.position.x;
+        const dy = tree.y - worker.position.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist < nearestDist) {
+          nearestDist = dist;
+          nearest = tree;
+        }
+      }
+    }
+
+    return nearest;
+  }
+
+  private findNearestWoodDrop(x: number, y: number, maxRange: number): WoodDrop | null {
+    let nearest: WoodDrop | null = null;
+    let nearestDist = maxRange;
+
+    for (const drop of this.state.woodDrops) {
+      if (drop.amount <= 0) continue;
+
+      // Check if a worker is already collecting this
+      const alreadyTargeted = this.state.workers.some(w => w.targetDrop === drop);
+      if (alreadyTargeted) continue;
+
+      const dx = drop.x - x;
+      const dy = drop.y - y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      if (dist < nearestDist) {
+        nearestDist = dist;
+        nearest = drop;
+      }
+    }
+
+    return nearest;
   }
 
   private render(): void {

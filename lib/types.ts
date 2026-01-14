@@ -98,6 +98,33 @@ export const UPGRADE_COSTS = {
   carryCapacity: [30, 100, 250, 600, 1500],
 };
 
+// Worker (hirable helper) types
+export enum WorkerState {
+  Idle = 'idle',
+  MovingToTree = 'moving_to_tree',
+  Chopping = 'chopping',
+  Collecting = 'collecting',
+  ReturningToChipper = 'returning',
+  Selling = 'selling',
+}
+
+export interface Worker {
+  id: string;
+  position: Position;
+  velocity: Velocity;
+  state: WorkerState;
+  targetTree: Tree | null;
+  targetDrop: WoodDrop | null;
+  wood: number;
+  chopTimer: number;
+  facingRight: boolean;
+  carryCapacity: number;
+  speed: number;
+  chopPower: number;
+}
+
+export const WORKER_COSTS = [100, 250, 500, 1000, 2000, 4000, 8000, 15000];
+
 export interface ChipperZone {
   x: number;
   y: number;
@@ -139,6 +166,7 @@ export interface GameState {
   floatingTexts: FloatingText[];
   totalWoodChopped: number;
   totalMoneyEarned: number;
+  workers: Worker[];
 }
 
 export interface SpriteSheet {
@@ -146,6 +174,9 @@ export interface SpriteSheet {
   treeStumps: HTMLCanvasElement[];
   player: HTMLCanvasElement;
   playerChop: HTMLCanvasElement;
+  worker: HTMLCanvasElement;
+  workerChop: HTMLCanvasElement;
+  workerCarry: HTMLCanvasElement;
   wood: HTMLCanvasElement;
   chipper: HTMLCanvasElement;
   axe: HTMLCanvasElement;
@@ -166,7 +197,7 @@ export interface GameConfig {
 
 export const DEFAULT_CONFIG: GameConfig = {
   chunkSize: 512,
-  treeCount: 15,
+  treeCount: 50,  // Much denser forest!
   playerSpeed: 150,
   renderDistance: 2,
   pixelScale: 3,

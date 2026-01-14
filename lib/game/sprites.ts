@@ -78,6 +78,26 @@ const COLORS = {
     bladeLight: '#D0D0D0',
     edge: '#E8E8E8',
   },
+  worker: {
+    skin: '#D2A67D',
+    skinShadow: '#B8906A',
+    skinHighlight: '#E8C4A0',
+    // Green work shirt
+    shirtGreen: '#4A7C4A',
+    shirtGreenDark: '#3A5C3A',
+    shirtGreenLight: '#5A9C5A',
+    // Brown pants
+    pants: '#6B5A4A',
+    pantsDark: '#4A3D32',
+    pantsLight: '#8B7A6A',
+    // Work boots
+    boots: '#4A3828',
+    bootsDark: '#2A2018',
+    bootsLight: '#6A5848',
+    // Cap
+    cap: '#CC4444',
+    capDark: '#993333',
+  },
 };
 
 function createCanvas(width: number, height: number): HTMLCanvasElement {
@@ -775,6 +795,209 @@ function createAxeSprite(): HTMLCanvasElement {
   return canvas;
 }
 
+function createWorkerSprite(): HTMLCanvasElement {
+  const canvas = createCanvas(14, 20);
+  const ctx = canvas.getContext('2d')!;
+  const w = COLORS.worker;
+
+  // Cap
+  fillRect(ctx, 5, 0, 4, 2, w.cap);
+  setPixel(ctx, 4, 1, w.cap);
+  setPixel(ctx, 9, 1, w.capDark);
+  setPixel(ctx, 6, 0, w.capDark);
+  // Cap brim
+  fillRect(ctx, 4, 2, 6, 1, w.capDark);
+
+  // Face with shading
+  for (let y = 3; y < 6; y++) {
+    for (let x = 5; x <= 8; x++) {
+      if (x === 5) setPixel(ctx, x, y, w.skinShadow);
+      else if (x === 8) setPixel(ctx, x, y, w.skinHighlight);
+      else setPixel(ctx, x, y, w.skin);
+    }
+  }
+
+  // Eyes
+  setPixel(ctx, 6, 3, '#2B3A4D');
+  setPixel(ctx, 7, 3, '#2B3A4D');
+
+  // Green work shirt
+  for (let y = 6; y <= 11; y++) {
+    for (let x = 4; x <= 9; x++) {
+      if (x <= 5) setPixel(ctx, x, y, w.shirtGreenDark);
+      else if (x >= 8) setPixel(ctx, x, y, w.shirtGreenLight);
+      else setPixel(ctx, x, y, w.shirtGreen);
+    }
+  }
+
+  // Arms
+  setPixel(ctx, 3, 7, w.skinShadow);
+  setPixel(ctx, 3, 8, w.skin);
+  setPixel(ctx, 10, 7, w.skin);
+  setPixel(ctx, 10, 8, w.skinHighlight);
+
+  // Brown pants
+  for (let y = 12; y <= 16; y++) {
+    setPixel(ctx, 4, y, w.pantsDark);
+    setPixel(ctx, 5, y, w.pants);
+    setPixel(ctx, 6, y, w.pantsLight);
+    setPixel(ctx, 7, y, w.pantsDark);
+    setPixel(ctx, 8, y, w.pants);
+    setPixel(ctx, 9, y, w.pantsLight);
+  }
+
+  // Work boots
+  for (let y = 17; y <= 19; y++) {
+    setPixel(ctx, 4, y, w.bootsDark);
+    setPixel(ctx, 5, y, w.boots);
+    setPixel(ctx, 6, y, w.bootsLight);
+    setPixel(ctx, 7, y, w.bootsDark);
+    setPixel(ctx, 8, y, w.boots);
+    setPixel(ctx, 9, y, w.bootsLight);
+  }
+
+  return canvas;
+}
+
+function createWorkerChopSprite(): HTMLCanvasElement {
+  const canvas = createCanvas(20, 20);
+  const ctx = canvas.getContext('2d')!;
+  const w = COLORS.worker;
+  const a = COLORS.axe;
+
+  // Cap
+  fillRect(ctx, 5, 0, 4, 2, w.cap);
+  setPixel(ctx, 4, 1, w.cap);
+  setPixel(ctx, 9, 1, w.capDark);
+  fillRect(ctx, 4, 2, 6, 1, w.capDark);
+
+  // Face
+  for (let y = 3; y < 6; y++) {
+    for (let x = 5; x <= 8; x++) {
+      if (x === 5) setPixel(ctx, x, y, w.skinShadow);
+      else if (x === 8) setPixel(ctx, x, y, w.skinHighlight);
+      else setPixel(ctx, x, y, w.skin);
+    }
+  }
+  setPixel(ctx, 6, 3, '#2B3A4D');
+  setPixel(ctx, 7, 3, '#2B3A4D');
+
+  // Shirt
+  for (let y = 6; y <= 11; y++) {
+    for (let x = 4; x <= 9; x++) {
+      if (x <= 5) setPixel(ctx, x, y, w.shirtGreenDark);
+      else if (x >= 8) setPixel(ctx, x, y, w.shirtGreenLight);
+      else setPixel(ctx, x, y, w.shirtGreen);
+    }
+  }
+
+  // Extended arm with axe
+  setPixel(ctx, 10, 6, w.skin);
+  setPixel(ctx, 11, 5, w.skin);
+  setPixel(ctx, 12, 4, w.skinHighlight);
+
+  // Axe
+  setPixel(ctx, 13, 3, a.handle);
+  setPixel(ctx, 14, 2, a.handle);
+  setPixel(ctx, 15, 1, a.handleLight);
+  fillRect(ctx, 16, 0, 3, 4, a.blade);
+  setPixel(ctx, 18, 0, a.edge);
+  setPixel(ctx, 18, 1, a.edge);
+
+  // Other arm
+  setPixel(ctx, 3, 7, w.skinShadow);
+  setPixel(ctx, 3, 8, w.skin);
+
+  // Pants
+  for (let y = 12; y <= 16; y++) {
+    setPixel(ctx, 4, y, w.pantsDark);
+    setPixel(ctx, 5, y, w.pants);
+    setPixel(ctx, 6, y, w.pantsLight);
+    setPixel(ctx, 7, y, w.pantsDark);
+    setPixel(ctx, 8, y, w.pants);
+    setPixel(ctx, 9, y, w.pantsLight);
+  }
+
+  // Boots
+  for (let y = 17; y <= 19; y++) {
+    setPixel(ctx, 4, y, w.bootsDark);
+    setPixel(ctx, 5, y, w.boots);
+    setPixel(ctx, 6, y, w.bootsLight);
+    setPixel(ctx, 7, y, w.bootsDark);
+    setPixel(ctx, 8, y, w.boots);
+    setPixel(ctx, 9, y, w.bootsLight);
+  }
+
+  return canvas;
+}
+
+function createWorkerCarrySprite(): HTMLCanvasElement {
+  const canvas = createCanvas(14, 20);
+  const ctx = canvas.getContext('2d')!;
+  const w = COLORS.worker;
+  const wood = COLORS.wood;
+
+  // Cap
+  fillRect(ctx, 5, 0, 4, 2, w.cap);
+  setPixel(ctx, 4, 1, w.cap);
+  setPixel(ctx, 9, 1, w.capDark);
+  fillRect(ctx, 4, 2, 6, 1, w.capDark);
+
+  // Face
+  for (let y = 3; y < 6; y++) {
+    for (let x = 5; x <= 8; x++) {
+      if (x === 5) setPixel(ctx, x, y, w.skinShadow);
+      else if (x === 8) setPixel(ctx, x, y, w.skinHighlight);
+      else setPixel(ctx, x, y, w.skin);
+    }
+  }
+  setPixel(ctx, 6, 3, '#2B3A4D');
+  setPixel(ctx, 7, 3, '#2B3A4D');
+
+  // Shirt (slightly hunched from carrying)
+  for (let y = 6; y <= 11; y++) {
+    for (let x = 4; x <= 9; x++) {
+      if (x <= 5) setPixel(ctx, x, y, w.shirtGreenDark);
+      else if (x >= 8) setPixel(ctx, x, y, w.shirtGreenLight);
+      else setPixel(ctx, x, y, w.shirtGreen);
+    }
+  }
+
+  // Arms holding wood bundle on shoulder
+  setPixel(ctx, 3, 5, w.skin);
+  setPixel(ctx, 10, 5, w.skinHighlight);
+
+  // Wood bundle on shoulder
+  for (let x = 2; x <= 11; x++) {
+    setPixel(ctx, x, 3, wood.dark);
+    setPixel(ctx, x, 4, wood.base);
+  }
+  setPixel(ctx, 11, 3, wood.light);
+  setPixel(ctx, 11, 4, wood.ring);
+
+  // Pants
+  for (let y = 12; y <= 16; y++) {
+    setPixel(ctx, 4, y, w.pantsDark);
+    setPixel(ctx, 5, y, w.pants);
+    setPixel(ctx, 6, y, w.pantsLight);
+    setPixel(ctx, 7, y, w.pantsDark);
+    setPixel(ctx, 8, y, w.pants);
+    setPixel(ctx, 9, y, w.pantsLight);
+  }
+
+  // Boots
+  for (let y = 17; y <= 19; y++) {
+    setPixel(ctx, 4, y, w.bootsDark);
+    setPixel(ctx, 5, y, w.boots);
+    setPixel(ctx, 6, y, w.bootsLight);
+    setPixel(ctx, 7, y, w.bootsDark);
+    setPixel(ctx, 8, y, w.boots);
+    setPixel(ctx, 9, y, w.bootsLight);
+  }
+
+  return canvas;
+}
+
 export function createSpriteSheet(): SpriteSheet {
   return {
     trees: [
@@ -791,6 +1014,9 @@ export function createSpriteSheet(): SpriteSheet {
     ],
     player: createPlayerSprite(),
     playerChop: createPlayerChopSprite(),
+    worker: createWorkerSprite(),
+    workerChop: createWorkerChopSprite(),
+    workerCarry: createWorkerCarrySprite(),
     wood: createWoodSprite(),
     chipper: createChipperSprite(),
     axe: createAxeSprite(),
