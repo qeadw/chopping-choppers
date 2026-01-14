@@ -25,6 +25,39 @@ function hashCoords(x: number, y: number): number {
   return hash ^ (hash >> 16);
 }
 
+// Clear zones where no trees should spawn
+const CLEAR_ZONES = [
+  { x: -50, y: -50, radius: 80 },  // Chipper area
+  { x: 50, y: -50, radius: 60 },   // Shack area
+];
+
+// Check if a position is in a clear zone
+function isInClearZone(x: number, y: number): boolean {
+  for (const zone of CLEAR_ZONES) {
+    const dx = x - zone.x;
+    const dy = y - zone.y;
+    if (dx * dx + dy * dy < zone.radius * zone.radius) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Check if a new tree would overlap with existing trees
+function wouldOverlap(x: number, y: number, type: TreeType, existingTrees: Tree[]): boolean {
+  const newRadius = TREE_STATS[type].hitboxRadius + 8; // Add padding
+  for (const tree of existingTrees) {
+    const existingRadius = TREE_STATS[tree.type].hitboxRadius + 8;
+    const minDist = newRadius + existingRadius;
+    const dx = x - tree.x;
+    const dy = y - tree.y;
+    if (dx * dx + dy * dy < minDist * minDist) {
+      return true;
+    }
+  }
+  return false;
+}
+
 let treeIdCounter = 0;
 
 export function generateChunk(chunkX: number, chunkY: number, config: GameConfig): Chunk {
@@ -38,9 +71,20 @@ export function generateChunk(chunkX: number, chunkY: number, config: GameConfig
   // Generate trees with some randomness
   const treeCount = Math.floor(config.treeCount * (0.7 + rng.next() * 0.6));
 
-  for (let i = 0; i < treeCount; i++) {
+  // Try to place trees, with multiple attempts to avoid overlap
+  let attempts = 0;
+  const maxAttempts = treeCount * 3;
+
+  while (trees.length < treeCount && attempts < maxAttempts) {
+    attempts++;
+
     const x = worldX + rng.next() * config.chunkSize;
     const y = worldY + rng.next() * config.chunkSize;
+
+    // Skip if in a clear zone
+    if (isInClearZone(x, y)) {
+      continue;
+    }
 
     // Weighted tree type selection
     const typeRoll = rng.next();
@@ -53,6 +97,11 @@ export function generateChunk(chunkX: number, chunkY: number, config: GameConfig
       type = TreeType.Oak;
     } else {
       type = TreeType.DeadTree;
+    }
+
+    // Skip if would overlap with existing trees
+    if (wouldOverlap(x, y, type, trees)) {
+      continue;
     }
 
     const stats = TREE_STATS[type];

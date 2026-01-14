@@ -1,4 +1,4 @@
-import { GameState, SpriteSheet, GameConfig, Tree, WoodDrop, Particle, FloatingText, Worker, WorkerState, UPGRADE_COSTS, WORKER_COSTS } from '../types';
+import { GameState, SpriteSheet, GameConfig, Tree, WoodDrop, Particle, FloatingText, Worker, WorkerState, UPGRADE_COSTS, WORKER_COSTS, WORKER_UPGRADE_COSTS } from '../types';
 import { getTreeSprite } from './sprites';
 
 // Ground colors for tiling
@@ -25,6 +25,9 @@ export function render(
 
   // Draw chipper
   drawChipper(ctx, state, sprites, config);
+
+  // Draw shack
+  drawShack(ctx, state, sprites, config);
 
   // Collect all visible trees from chunks
   const visibleTrees: Tree[] = [];
@@ -202,7 +205,9 @@ function drawWorker(
 ): void {
   // Choose sprite based on state
   let sprite: HTMLCanvasElement;
-  if (worker.state === WorkerState.Chopping && worker.chopTimer > 0.3) {
+  if (worker.state === WorkerState.Resting) {
+    sprite = sprites.workerSleep;
+  } else if (worker.state === WorkerState.Chopping && worker.chopTimer > 0.3) {
     sprite = sprites.workerChop;
   } else if (worker.wood > 0) {
     sprite = sprites.workerCarry;
@@ -239,6 +244,23 @@ function drawWorker(
     ctx.font = `bold ${8 * scale}px monospace`;
     ctx.textAlign = 'center';
     ctx.fillText(`${worker.wood}`, textX, textY);
+  }
+
+  // Draw stamina bar
+  if (worker.state !== WorkerState.Resting) {
+    const barWidth = 16 * scale;
+    const barHeight = 3 * scale;
+    const barX = (worker.position.x - camera.x) * scale - barWidth / 2;
+    const barY = (worker.position.y - camera.y - 18) * scale;
+
+    // Background
+    ctx.fillStyle = '#333';
+    ctx.fillRect(barX, barY, barWidth, barHeight);
+
+    // Stamina
+    const staminaPercent = Math.max(0, worker.stamina / worker.maxStamina);
+    ctx.fillStyle = staminaPercent > 0.5 ? '#4af' : staminaPercent > 0.25 ? '#fa4' : '#f44';
+    ctx.fillRect(barX, barY, barWidth * staminaPercent, barHeight);
   }
 }
 
@@ -307,6 +329,36 @@ function drawChipper(
     ctx.font = `bold ${10 * scale}px monospace`;
     ctx.textAlign = 'center';
     ctx.fillText('[E] Sell Wood', screenX + sprites.chipper.width * scale / 2, screenY - 10);
+  }
+}
+
+function drawShack(
+  ctx: CanvasRenderingContext2D,
+  state: GameState,
+  sprites: SpriteSheet,
+  config: GameConfig
+): void {
+  const { shack, camera } = state;
+  const scale = config.pixelScale;
+
+  const screenX = (shack.x - camera.x) * scale;
+  const screenY = (shack.y - camera.y) * scale;
+
+  ctx.drawImage(
+    sprites.shack,
+    screenX,
+    screenY,
+    sprites.shack.width * scale,
+    sprites.shack.height * scale
+  );
+
+  // Show resting workers count
+  const restingCount = state.workers.filter(w => w.state === WorkerState.Resting).length;
+  if (restingCount > 0) {
+    ctx.fillStyle = '#88AAFF';
+    ctx.font = `bold ${10 * scale}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillText(`${restingCount} resting`, screenX + sprites.shack.width * scale / 2, screenY - 10);
   }
 }
 
@@ -389,12 +441,12 @@ function drawUI(
   const upgradeWidth = 220;
   const upgradeX = ctx.canvas.width - upgradeWidth - padding;
   ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-  ctx.fillRect(upgradeX, padding, upgradeWidth, 140);
+  ctx.fillRect(upgradeX, padding, upgradeWidth, 200);
 
   ctx.fillStyle = '#FFD700';
   ctx.font = 'bold 14px monospace';
   ctx.textAlign = 'center';
-  ctx.fillText('UPGRADES [1-4]', upgradeX + upgradeWidth / 2, padding + 18);
+  ctx.fillText('UPGRADES [1-6]', upgradeX + upgradeWidth / 2, padding + 18);
 
   ctx.textAlign = 'left';
   ctx.font = '12px monospace';
@@ -404,15 +456,22 @@ function drawUI(
     { key: '2', name: 'Move Speed', level: state.upgrades.moveSpeed, costs: UPGRADE_COSTS.moveSpeed },
     { key: '3', name: 'Chop Speed', level: state.upgrades.chopSpeed, costs: UPGRADE_COSTS.chopSpeed },
     { key: '4', name: 'Carry Cap', level: state.upgrades.carryCapacity, costs: UPGRADE_COSTS.carryCapacity },
+    { key: '5', name: 'Rest Speed', level: state.workerUpgrades.restSpeed, costs: WORKER_UPGRADE_COSTS.restSpeed, isWorker: true },
+    { key: '6', name: 'Work Dur.', level: state.workerUpgrades.workDuration, costs: WORKER_UPGRADE_COSTS.workDuration, isWorker: true },
   ];
 
   upgrades.forEach((upg, i) => {
     const y = padding + 35 + i * 26;
-    const levelIndex = upg.name === 'Carry Cap' ? Math.floor((upg.level - 20) / 10) : upg.level - 1;
+    let levelIndex: number;
+    if (upg.name === 'Carry Cap') {
+      levelIndex = Math.floor((upg.level - 20) / 10);
+    } else {
+      levelIndex = upg.level - 1;
+    }
     const nextCost = upg.costs[levelIndex];
     const maxed = nextCost === undefined;
 
-    ctx.fillStyle = '#fff';
+    ctx.fillStyle = (upg as { isWorker?: boolean }).isWorker ? '#88AAFF' : '#fff';
     ctx.fillText(`[${upg.key}] ${upg.name}`, upgradeX + 10, y);
 
     if (maxed) {
@@ -436,7 +495,7 @@ function drawUI(
   ctx.fillStyle = '#ccc';
   ctx.font = '12px monospace';
   ctx.textAlign = 'left';
-  ctx.fillText('WASD: Move | SPACE/Click: Chop | E: Sell | H: Hire Worker | 1-4: Upgrades', padding + 10, controlsY + 16);
+  ctx.fillText('WASD: Move | SPACE/Click: Chop | E: Sell | H: Hire | 1-6: Upgrades', padding + 10, controlsY + 16);
 
   // Capacity warning
   if (state.wood >= state.upgrades.carryCapacity) {

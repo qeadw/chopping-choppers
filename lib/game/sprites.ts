@@ -998,6 +998,177 @@ function createWorkerCarrySprite(): HTMLCanvasElement {
   return canvas;
 }
 
+function createWorkerSleepSprite(): HTMLCanvasElement {
+  const canvas = createCanvas(16, 10);
+  const ctx = canvas.getContext('2d')!;
+  const w = COLORS.worker;
+
+  // Worker lying down (side view)
+  // Head with cap
+  fillRect(ctx, 0, 2, 3, 3, w.cap);
+  setPixel(ctx, 0, 5, w.capDark);
+  setPixel(ctx, 1, 5, w.capDark);
+  setPixel(ctx, 2, 5, w.capDark);
+
+  // Face
+  for (let x = 3; x <= 5; x++) {
+    setPixel(ctx, x, 2, w.skinShadow);
+    setPixel(ctx, x, 3, w.skin);
+    setPixel(ctx, x, 4, w.skinHighlight);
+  }
+  // Closed eyes (Z's)
+  setPixel(ctx, 4, 3, '#2B3A4D');
+
+  // Body (lying flat)
+  for (let x = 6; x <= 11; x++) {
+    setPixel(ctx, x, 2, w.shirtGreenDark);
+    setPixel(ctx, x, 3, w.shirtGreen);
+    setPixel(ctx, x, 4, w.shirtGreenLight);
+  }
+
+  // Legs
+  for (let x = 12; x <= 15; x++) {
+    setPixel(ctx, x, 2, w.pantsDark);
+    setPixel(ctx, x, 3, w.pants);
+    setPixel(ctx, x, 4, w.pantsLight);
+  }
+
+  // Z's floating above (sleeping indicator)
+  ctx.fillStyle = '#FFFFFF';
+  ctx.font = 'bold 6px monospace';
+  ctx.fillText('z', 3, 1);
+  ctx.fillText('Z', 6, 0);
+
+  return canvas;
+}
+
+function createShackSprite(): HTMLCanvasElement {
+  const canvas = createCanvas(40, 36);
+  const ctx = canvas.getContext('2d')!;
+
+  const shackColors = {
+    roofDark: '#5C3A21',
+    roof: '#7A4D2A',
+    roofLight: '#9A6A40',
+    wallDark: '#6B4423',
+    wall: '#8B5A2B',
+    wallLight: '#A67C52',
+    door: '#4A3020',
+    doorFrame: '#3A2515',
+    window: '#87CEEB',
+    windowFrame: '#5C3A21',
+  };
+
+  // Roof (triangular)
+  for (let y = 0; y < 14; y++) {
+    const width = 40 - y * 2;
+    const startX = y;
+    for (let x = startX; x < startX + width; x++) {
+      let color: string;
+      if (x < startX + width / 3) {
+        color = shackColors.roofDark;
+      } else if (x > startX + (width * 2) / 3) {
+        color = shackColors.roofLight;
+      } else {
+        color = shackColors.roof;
+      }
+      setPixel(ctx, x, y, color);
+    }
+  }
+
+  // Wall
+  for (let y = 14; y < 36; y++) {
+    for (let x = 4; x < 36; x++) {
+      let color: string;
+      if (x < 12) {
+        color = shackColors.wallDark;
+      } else if (x > 28) {
+        color = shackColors.wallLight;
+      } else {
+        color = shackColors.wall;
+      }
+      setPixel(ctx, x, y, color);
+    }
+  }
+
+  // Door
+  for (let y = 20; y < 36; y++) {
+    for (let x = 16; x < 24; x++) {
+      setPixel(ctx, x, y, shackColors.door);
+    }
+  }
+  // Door frame
+  for (let y = 20; y < 36; y++) {
+    setPixel(ctx, 15, y, shackColors.doorFrame);
+    setPixel(ctx, 24, y, shackColors.doorFrame);
+  }
+  for (let x = 15; x <= 24; x++) {
+    setPixel(ctx, x, 19, shackColors.doorFrame);
+  }
+  // Door handle
+  setPixel(ctx, 22, 27, '#FFD700');
+  setPixel(ctx, 22, 28, '#CC9900');
+
+  // Window (left)
+  for (let y = 16; y < 22; y++) {
+    for (let x = 7; x < 13; x++) {
+      setPixel(ctx, x, y, shackColors.window);
+    }
+  }
+  // Window frame
+  for (let y = 15; y < 23; y++) {
+    setPixel(ctx, 6, y, shackColors.windowFrame);
+    setPixel(ctx, 13, y, shackColors.windowFrame);
+  }
+  for (let x = 6; x <= 13; x++) {
+    setPixel(ctx, x, 15, shackColors.windowFrame);
+    setPixel(ctx, x, 22, shackColors.windowFrame);
+  }
+  // Window cross
+  setPixel(ctx, 9, 16, shackColors.windowFrame);
+  setPixel(ctx, 9, 17, shackColors.windowFrame);
+  setPixel(ctx, 9, 18, shackColors.windowFrame);
+  setPixel(ctx, 9, 19, shackColors.windowFrame);
+  setPixel(ctx, 9, 20, shackColors.windowFrame);
+  setPixel(ctx, 9, 21, shackColors.windowFrame);
+  for (let x = 7; x < 13; x++) {
+    setPixel(ctx, x, 18, shackColors.windowFrame);
+  }
+
+  // Window (right)
+  for (let y = 16; y < 22; y++) {
+    for (let x = 27; x < 33; x++) {
+      setPixel(ctx, x, y, shackColors.window);
+    }
+  }
+  // Window frame
+  for (let y = 15; y < 23; y++) {
+    setPixel(ctx, 26, y, shackColors.windowFrame);
+    setPixel(ctx, 33, y, shackColors.windowFrame);
+  }
+  for (let x = 26; x <= 33; x++) {
+    setPixel(ctx, x, 15, shackColors.windowFrame);
+    setPixel(ctx, x, 22, shackColors.windowFrame);
+  }
+  // Window cross
+  setPixel(ctx, 29, 16, shackColors.windowFrame);
+  setPixel(ctx, 29, 17, shackColors.windowFrame);
+  setPixel(ctx, 29, 18, shackColors.windowFrame);
+  setPixel(ctx, 29, 19, shackColors.windowFrame);
+  setPixel(ctx, 29, 20, shackColors.windowFrame);
+  setPixel(ctx, 29, 21, shackColors.windowFrame);
+  for (let x = 27; x < 33; x++) {
+    setPixel(ctx, x, 18, shackColors.windowFrame);
+  }
+
+  // Sign above door
+  ctx.fillStyle = '#FFF';
+  ctx.font = 'bold 6px monospace';
+  ctx.fillText('REST', 15, 18);
+
+  return canvas;
+}
+
 export function createSpriteSheet(): SpriteSheet {
   return {
     trees: [
@@ -1017,8 +1188,10 @@ export function createSpriteSheet(): SpriteSheet {
     worker: createWorkerSprite(),
     workerChop: createWorkerChopSprite(),
     workerCarry: createWorkerCarrySprite(),
+    workerSleep: createWorkerSleepSprite(),
     wood: createWoodSprite(),
     chipper: createChipperSprite(),
+    shack: createShackSprite(),
     axe: createAxeSprite(),
   };
 }

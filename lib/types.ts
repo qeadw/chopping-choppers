@@ -106,6 +106,8 @@ export enum WorkerState {
   Collecting = 'collecting',
   ReturningToChipper = 'returning',
   Selling = 'selling',
+  GoingToRest = 'going_to_rest',
+  Resting = 'resting',
 }
 
 export interface Worker {
@@ -121,11 +123,23 @@ export interface Worker {
   carryCapacity: number;
   speed: number;
   chopPower: number;
+  // Fatigue system
+  treesChopped: number;      // Trees chopped since last rest
+  stamina: number;           // Current stamina (0-100)
+  maxStamina: number;        // Max stamina before needing rest
+  restTimer: number;         // Time left resting
 }
 
 export const WORKER_COSTS = [100, 250, 500, 1000, 2000, 4000, 8000, 15000];
 
 export interface ChipperZone {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface Shack {
   x: number;
   y: number;
   width: number;
@@ -152,6 +166,16 @@ export interface FloatingText {
   maxLife: number;
 }
 
+export interface WorkerUpgrades {
+  restSpeed: number;      // How fast workers recover (multiplier)
+  workDuration: number;   // How long workers can work before rest (multiplier)
+}
+
+export const WORKER_UPGRADE_COSTS = {
+  restSpeed: [200, 500, 1200, 3000],
+  workDuration: [300, 800, 2000, 5000],
+};
+
 export interface GameState {
   player: Player;
   camera: Camera;
@@ -160,8 +184,10 @@ export interface GameState {
   wood: number;
   money: number;
   upgrades: Upgrades;
+  workerUpgrades: WorkerUpgrades;
   woodDrops: WoodDrop[];
   chipper: ChipperZone;
+  shack: Shack;
   particles: Particle[];
   floatingTexts: FloatingText[];
   totalWoodChopped: number;
@@ -177,8 +203,10 @@ export interface SpriteSheet {
   worker: HTMLCanvasElement;
   workerChop: HTMLCanvasElement;
   workerCarry: HTMLCanvasElement;
+  workerSleep: HTMLCanvasElement;
   wood: HTMLCanvasElement;
   chipper: HTMLCanvasElement;
+  shack: HTMLCanvasElement;
   axe: HTMLCanvasElement;
 }
 
