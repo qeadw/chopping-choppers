@@ -81,5 +81,6 @@ export function createCamera(width: number, height: number): Camera {
     y: 0,
     width,
     height,
+    zoom: 1,
   };
 }

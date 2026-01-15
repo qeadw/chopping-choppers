@@ -68,8 +68,8 @@ export function generateChunk(chunkX: number, chunkY: number, config: GameConfig
   const worldX = chunkX * config.chunkSize;
   const worldY = chunkY * config.chunkSize;
 
-  // Generate trees with some randomness
-  const treeCount = Math.floor(config.treeCount * (0.7 + rng.next() * 0.6));
+  // Generate 12-20 trees per chunk randomly
+  const treeCount = 12 + Math.floor(rng.next() * 9);  // 12 to 20 trees
 
   // Try to place trees, with multiple attempts to avoid overlap
   let attempts = 0;

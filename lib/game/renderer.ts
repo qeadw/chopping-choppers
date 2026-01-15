@@ -1,4 +1,5 @@
-import { GameState, SpriteSheet, GameConfig, Tree, WoodDrop, Particle, FloatingText, Worker, WorkerState, UPGRADE_COSTS, WORKER_COSTS, WORKER_UPGRADE_COSTS } from '../types';
+import { GameState, SpriteSheet, GameConfig, Tree, WoodDrop, Particle, FloatingText, Worker, WorkerType, WorkerState, UPGRADE_COSTS, CHOPPER_COSTS, COLLECTOR_COSTS, WORKER_UPGRADE_COSTS } from '../types';
+import { chunkKey } from './forest';
 import { getTreeSprite } from './sprites';
 
 // Ground colors for tiling
@@ -11,7 +12,8 @@ export function render(
   config: GameConfig
 ): void {
   const { camera, player, chunks } = state;
-  const scale = config.pixelScale;
+  const baseScale = config.pixelScale;
+  const scale = baseScale * camera.zoom;
 
   // Clear canvas
   ctx.fillStyle = '#2d4a2d';
@@ -20,26 +22,40 @@ export function render(
   // Disable image smoothing for crisp pixels
   ctx.imageSmoothingEnabled = false;
 
+  // Calculate the effective camera view (larger when zoomed out)
+  const effectiveWidth = camera.width / camera.zoom;
+  const effectiveHeight = camera.height / camera.zoom;
+  const effectiveCameraX = player.position.x - effectiveWidth / 2;
+  const effectiveCameraY = player.position.y - effectiveHeight / 2;
+
+  const effectiveCamera = {
+    x: effectiveCameraX,
+    y: effectiveCameraY,
+    width: effectiveWidth,
+    height: effectiveHeight,
+    zoom: camera.zoom,
+  };
+
   // Draw ground pattern
-  drawGround(ctx, camera, scale);
+  drawGround(ctx, effectiveCamera, scale);
 
   // Draw chipper
-  drawChipper(ctx, state, sprites, config);
+  drawChipper(ctx, state, sprites, config, effectiveCamera, scale);
 
   // Draw shack
-  drawShack(ctx, state, sprites, config);
+  drawShack(ctx, state, sprites, config, effectiveCamera, scale);
 
   // Collect all visible trees from chunks
   const visibleTrees: Tree[] = [];
-  const buffer = 100;
+  const buffer = 100 / camera.zoom;
 
   for (const chunk of chunks.values()) {
     for (const tree of chunk.trees) {
       if (
-        tree.x >= camera.x - buffer &&
-        tree.x <= camera.x + camera.width + buffer &&
-        tree.y >= camera.y - buffer &&
-        tree.y <= camera.y + camera.height + buffer
+        tree.x >= effectiveCameraX - buffer &&
+        tree.x <= effectiveCameraX + effectiveWidth + buffer &&
+        tree.y >= effectiveCameraY - buffer &&
+        tree.y <= effectiveCameraY + effectiveHeight + buffer
       ) {
         visibleTrees.push(tree);
       }
@@ -57,37 +73,42 @@ export function render(
 
   for (const tree of visibleTrees) {
     if (!playerDrawn && tree.y > playerY) {
-      drawPlayer(ctx, state, sprites, config);
+      drawPlayer(ctx, state, sprites, config, effectiveCamera, scale);
       playerDrawn = true;
     }
-    drawTree(ctx, tree, camera, sprites, scale, config);
+    drawTree(ctx, tree, effectiveCamera, sprites, scale, config);
   }
 
   if (!playerDrawn) {
-    drawPlayer(ctx, state, sprites, config);
+    drawPlayer(ctx, state, sprites, config, effectiveCamera, scale);
   }
 
   // Draw workers
   for (const worker of state.workers) {
-    drawWorker(ctx, worker, camera, sprites, scale);
+    drawWorker(ctx, worker, effectiveCamera, sprites, scale);
   }
 
   // Draw wood drops
   for (const drop of state.woodDrops) {
-    drawWoodDrop(ctx, drop, camera, sprites, scale);
+    drawWoodDrop(ctx, drop, effectiveCamera, sprites, scale);
   }
 
   // Draw particles
   for (const particle of state.particles) {
-    drawParticle(ctx, particle, camera, scale);
+    drawParticle(ctx, particle, effectiveCamera, scale);
   }
 
   // Draw floating texts
   for (const text of state.floatingTexts) {
-    drawFloatingText(ctx, text, camera, scale);
+    drawFloatingText(ctx, text, effectiveCamera, scale);
   }
 
-  // Draw UI
+  // Draw chunk debug overlay when zoomed out
+  if (camera.zoom < 0.6) {
+    drawChunkOverlay(ctx, state, config, effectiveCamera, scale);
+  }
+
+  // Draw UI (always at normal scale)
   drawUI(ctx, state, sprites, config);
 }
 
@@ -167,10 +188,11 @@ function drawPlayer(
   ctx: CanvasRenderingContext2D,
   state: GameState,
   sprites: SpriteSheet,
-  config: GameConfig
+  config: GameConfig,
+  camera: { x: number; y: number; width: number; height: number },
+  scale: number
 ): void {
-  const { player, camera } = state;
-  const scale = config.pixelScale;
+  const { player } = state;
 
   const sprite = player.isChopping ? sprites.playerChop : sprites.player;
 
@@ -298,10 +320,11 @@ function drawChipper(
   ctx: CanvasRenderingContext2D,
   state: GameState,
   sprites: SpriteSheet,
-  config: GameConfig
+  config: GameConfig,
+  camera: { x: number; y: number; width: number; height: number },
+  scale: number
 ): void {
-  const { chipper, camera, player } = state;
-  const scale = config.pixelScale;
+  const { chipper, player } = state;
 
   const screenX = (chipper.x - camera.x) * scale;
   const screenY = (chipper.y - camera.y) * scale;
@@ -336,10 +359,11 @@ function drawShack(
   ctx: CanvasRenderingContext2D,
   state: GameState,
   sprites: SpriteSheet,
-  config: GameConfig
+  config: GameConfig,
+  camera: { x: number; y: number; width: number; height: number },
+  scale: number
 ): void {
-  const { shack, camera } = state;
-  const scale = config.pixelScale;
+  const { shack } = state;
 
   const screenX = (shack.x - camera.x) * scale;
   const screenY = (shack.y - camera.y) * scale;
@@ -409,7 +433,7 @@ function drawUI(
 
   // Top-left: Resources panel
   ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-  ctx.fillRect(padding, padding, 180, 100);
+  ctx.fillRect(padding, padding, 220, 110);
 
   ctx.fillStyle = '#fff';
   ctx.font = 'bold 16px monospace';
@@ -425,28 +449,30 @@ function drawUI(
 
   // Workers
   ctx.fillStyle = '#5A9C5A';
-  ctx.font = '14px monospace';
-  const nextWorkerCost = WORKER_COSTS[state.workers.length];
-  const workerText = nextWorkerCost !== undefined
-    ? `Workers: ${state.workers.length} [H] $${nextWorkerCost}`
-    : `Workers: ${state.workers.length} (MAX)`;
-  ctx.fillText(workerText, padding + 10, padding + 72);
+  ctx.font = '13px monospace';
+  const chopperCount = state.workers.filter(w => w.type === WorkerType.Chopper).length;
+  const collectorCount = state.workers.filter(w => w.type === WorkerType.Collector).length;
+  const nextChopperCost = CHOPPER_COSTS[chopperCount];
+  const nextCollectorCost = COLLECTOR_COSTS[collectorCount];
+  ctx.fillText(`Choppers: ${chopperCount} [J] ${nextChopperCost !== undefined ? '$' + nextChopperCost : 'MAX'}`, padding + 10, padding + 70);
+  ctx.fillStyle = '#88AAFF';
+  ctx.fillText(`Collectors: ${collectorCount} [K] ${nextCollectorCost !== undefined ? '$' + nextCollectorCost : 'MAX'}`, padding + 10, padding + 86);
 
   // Stats
   ctx.fillStyle = '#aaa';
   ctx.font = '11px monospace';
-  ctx.fillText(`Total chopped: ${state.totalWoodChopped}`, padding + 10, padding + 90);
+  ctx.fillText(`Total chopped: ${state.totalWoodChopped}`, padding + 10, padding + 102);
 
   // Top-right: Upgrades panel
-  const upgradeWidth = 220;
+  const upgradeWidth = 230;
   const upgradeX = ctx.canvas.width - upgradeWidth - padding;
   ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-  ctx.fillRect(upgradeX, padding, upgradeWidth, 200);
+  ctx.fillRect(upgradeX, padding, upgradeWidth, 250);
 
   ctx.fillStyle = '#FFD700';
   ctx.font = 'bold 14px monospace';
   ctx.textAlign = 'center';
-  ctx.fillText('UPGRADES [1-6]', upgradeX + upgradeWidth / 2, padding + 18);
+  ctx.fillText('UPGRADES [1-8]', upgradeX + upgradeWidth / 2, padding + 18);
 
   ctx.textAlign = 'left';
   ctx.font = '12px monospace';
@@ -458,6 +484,8 @@ function drawUI(
     { key: '4', name: 'Carry Cap', level: state.upgrades.carryCapacity, costs: UPGRADE_COSTS.carryCapacity },
     { key: '5', name: 'Rest Speed', level: state.workerUpgrades.restSpeed, costs: WORKER_UPGRADE_COSTS.restSpeed, isWorker: true },
     { key: '6', name: 'Work Dur.', level: state.workerUpgrades.workDuration, costs: WORKER_UPGRADE_COSTS.workDuration, isWorker: true },
+    { key: '7', name: 'Worker Spd', level: state.workerUpgrades.workerSpeed, costs: WORKER_UPGRADE_COSTS.workerSpeed, isWorker: true },
+    { key: '8', name: 'Worker Pwr', level: state.workerUpgrades.workerPower, costs: WORKER_UPGRADE_COSTS.workerPower, isWorker: true },
   ];
 
   upgrades.forEach((upg, i) => {
@@ -490,12 +518,12 @@ function drawUI(
   // Bottom: Controls hint
   ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
   const controlsY = ctx.canvas.height - 35;
-  ctx.fillRect(padding, controlsY, 500, 25);
+  ctx.fillRect(padding, controlsY, 620, 25);
 
   ctx.fillStyle = '#ccc';
   ctx.font = '12px monospace';
   ctx.textAlign = 'left';
-  ctx.fillText('WASD: Move | SPACE/Click: Chop | E: Sell | H: Hire | 1-6: Upgrades', padding + 10, controlsY + 16);
+  ctx.fillText('WASD: Move | Click: Chop | E: Sell | J: Hire Chopper | K: Hire Collector | Scroll: Zoom', padding + 10, controlsY + 16);
 
   // Capacity warning
   if (state.wood >= state.upgrades.carryCapacity) {
@@ -503,5 +531,77 @@ function drawUI(
     ctx.font = 'bold 16px monospace';
     ctx.textAlign = 'center';
     ctx.fillText('INVENTORY FULL - Sell wood at the chipper!', ctx.canvas.width / 2, 120);
+  }
+}
+
+function drawChunkOverlay(
+  ctx: CanvasRenderingContext2D,
+  state: GameState,
+  config: GameConfig,
+  camera: { x: number; y: number; width: number; height: number },
+  scale: number
+): void {
+  const { chunks } = state;
+  const chunkSize = config.chunkSize;
+
+  // Calculate visible chunk range
+  const startChunkX = Math.floor(camera.x / chunkSize) - 1;
+  const startChunkY = Math.floor(camera.y / chunkSize) - 1;
+  const endChunkX = Math.ceil((camera.x + camera.width) / chunkSize) + 1;
+  const endChunkY = Math.ceil((camera.y + camera.height) / chunkSize) + 1;
+
+  ctx.font = `${Math.max(10, 12 * scale / 3)}px monospace`;
+  ctx.textAlign = 'center';
+
+  for (let cx = startChunkX; cx <= endChunkX; cx++) {
+    for (let cy = startChunkY; cy <= endChunkY; cy++) {
+      const worldX = cx * chunkSize;
+      const worldY = cy * chunkSize;
+
+      const screenX = (worldX - camera.x) * scale;
+      const screenY = (worldY - camera.y) * scale;
+      const screenW = chunkSize * scale;
+      const screenH = chunkSize * scale;
+
+      const key = chunkKey(cx, cy);
+      const chunk = chunks.get(key);
+
+      let color: string;
+      let treeCount = 0;
+
+      if (!chunk) {
+        // Unloaded - grey
+        color = 'rgba(128, 128, 128, 0.4)';
+      } else {
+        // Count living trees
+        treeCount = chunk.trees.filter(t => !t.isDead).length;
+        if (treeCount === 0) {
+          // No trees left - green
+          color = 'rgba(0, 255, 0, 0.3)';
+        } else {
+          // Has trees - red
+          color = 'rgba(255, 0, 0, 0.3)';
+        }
+      }
+
+      // Draw chunk background
+      ctx.fillStyle = color;
+      ctx.fillRect(screenX, screenY, screenW, screenH);
+
+      // Draw chunk border
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(screenX, screenY, screenW, screenH);
+
+      // Draw tree count
+      if (chunk) {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+        ctx.fillText(
+          `${treeCount}`,
+          screenX + screenW / 2,
+          screenY + screenH / 2 + 4
+        );
+      }
+    }
   }
 }

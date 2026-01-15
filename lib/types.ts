@@ -73,6 +73,7 @@ export interface Camera {
   y: number;
   width: number;
   height: number;
+  zoom: number;  // Zoom level (1 = normal, <1 = zoomed out)
 }
 
 export interface InputState {
@@ -99,10 +100,16 @@ export const UPGRADE_COSTS = {
 };
 
 // Worker (hirable helper) types
+export enum WorkerType {
+  Chopper = 'chopper',
+  Collector = 'collector',
+}
+
 export enum WorkerState {
   Idle = 'idle',
   MovingToTree = 'moving_to_tree',
   Chopping = 'chopping',
+  MovingToDrop = 'moving_to_drop',
   Collecting = 'collecting',
   ReturningToChipper = 'returning',
   Selling = 'selling',
@@ -112,6 +119,7 @@ export enum WorkerState {
 
 export interface Worker {
   id: string;
+  type: WorkerType;
   position: Position;
   velocity: Velocity;
   state: WorkerState;
@@ -128,9 +136,11 @@ export interface Worker {
   stamina: number;           // Current stamina (0-100)
   maxStamina: number;        // Max stamina before needing rest
   restTimer: number;         // Time left resting
+  baseRestTime: number;      // Base rest duration for this worker type
 }
 
-export const WORKER_COSTS = [100, 250, 500, 1000, 2000, 4000, 8000, 15000];
+export const CHOPPER_COSTS = [100, 300, 700, 1500, 3000, 6000, 12000];
+export const COLLECTOR_COSTS = [150, 400, 900, 2000, 4000, 8000, 16000];
 
 export interface ChipperZone {
   x: number;
@@ -169,11 +179,15 @@ export interface FloatingText {
 export interface WorkerUpgrades {
   restSpeed: number;      // How fast workers recover (multiplier)
   workDuration: number;   // How long workers can work before rest (multiplier)
+  workerSpeed: number;    // Worker movement speed multiplier
+  workerPower: number;    // Worker power (chop damage for choppers, carry capacity for collectors)
 }
 
 export const WORKER_UPGRADE_COSTS = {
   restSpeed: [200, 500, 1200, 3000],
   workDuration: [300, 800, 2000, 5000],
+  workerSpeed: [150, 400, 1000, 2500],
+  workerPower: [250, 600, 1500, 4000],
 };
 
 export interface GameState {
@@ -225,13 +239,13 @@ export interface GameConfig {
 
 export const DEFAULT_CONFIG: GameConfig = {
   chunkSize: 512,
-  treeCount: 225,  // 15x original density!
+  treeCount: 16,   // Base tree count, actual is 12-20 random
   playerSpeed: 150,
   renderDistance: 2,
   pixelScale: 3,
   chopRange: 40,
   chopCooldown: 0.4,
   woodPickupRange: 30,
-  treeRespawnTime: 30,
+  treeRespawnTime: 300,  // 5 minutes
   woodPricePerUnit: 5,
 };

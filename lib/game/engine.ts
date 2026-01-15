@@ -8,10 +8,12 @@ import {
   FloatingText,
   Tree,
   Worker,
+  WorkerType,
   WorkerState,
   TREE_STATS,
   UPGRADE_COSTS,
-  WORKER_COSTS,
+  CHOPPER_COSTS,
+  COLLECTOR_COSTS,
   WORKER_UPGRADE_COSTS,
   Position,
 } from '../types';
@@ -36,6 +38,7 @@ export class GameEngine {
   private pendingChop: boolean = false;
   private upgradeKeyHandler: (e: KeyboardEvent) => void;
   private hireKeyHandler: (e: KeyboardEvent) => void;
+  private wheelHandler: (e: WheelEvent) => void;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -66,6 +69,8 @@ export class GameEngine {
       workerUpgrades: {
         restSpeed: 1,
         workDuration: 1,
+        workerSpeed: 1,
+        workerPower: 1,
       },
       woodDrops: [],
       chipper: {
@@ -92,19 +97,38 @@ export class GameEngine {
 
     // Setup upgrade key handler
     this.upgradeKeyHandler = (e: KeyboardEvent) => {
-      if (e.key >= '1' && e.key <= '6') {
+      if (e.key >= '1' && e.key <= '8') {
         this.handleUpgrade(parseInt(e.key));
       }
     };
     window.addEventListener('keydown', this.upgradeKeyHandler);
 
-    // Setup hire worker key handler (H key)
+    // Setup hire worker key handler (J = Chopper, K = Collector)
     this.hireKeyHandler = (e: KeyboardEvent) => {
-      if (e.key.toLowerCase() === 'h') {
-        this.hireWorker();
+      if (e.key.toLowerCase() === 'j') {
+        this.hireWorker(WorkerType.Chopper);
+      } else if (e.key.toLowerCase() === 'k') {
+        this.hireWorker(WorkerType.Collector);
       }
     };
     window.addEventListener('keydown', this.hireKeyHandler);
+
+    // Setup zoom handler (mouse wheel)
+    this.wheelHandler = (e: WheelEvent) => {
+      e.preventDefault();
+      const zoomSpeed = 0.1;
+      const minZoom = 0.2;
+      const maxZoom = 1.0;
+
+      if (e.deltaY > 0) {
+        // Zoom out
+        this.state.camera.zoom = Math.max(minZoom, this.state.camera.zoom - zoomSpeed);
+      } else {
+        // Zoom in
+        this.state.camera.zoom = Math.min(maxZoom, this.state.camera.zoom + zoomSpeed);
+      }
+    };
+    this.canvas.addEventListener('wheel', this.wheelHandler, { passive: false });
   }
 
   start(): void {
@@ -120,6 +144,7 @@ export class GameEngine {
     this.cleanupInput();
     window.removeEventListener('keydown', this.upgradeKeyHandler);
     window.removeEventListener('keydown', this.hireKeyHandler);
+    this.canvas.removeEventListener('wheel', this.wheelHandler);
   }
 
   resize(width: number, height: number): void {
@@ -236,13 +261,13 @@ export class GameEngine {
   }
 
   private spawnWoodDrop(x: number, y: number, amount: number): void {
-    // Scatter drops slightly
+    // Scatter drops slightly around the tree base
     const drop: WoodDrop = {
       id: `drop_${dropIdCounter++}`,
-      x: x + (Math.random() - 0.5) * 20,
-      y: y + (Math.random() - 0.5) * 10,
+      x: x + (Math.random() - 0.5) * 16,
+      y: y + (Math.random() - 0.5) * 8,
       amount,
-      lifetime: 30, // 30 seconds to pick up
+      lifetime: 60, // 60 seconds to pick up
       bobOffset: Math.random() * Math.PI * 2,
     };
     this.state.woodDrops.push(drop);
@@ -353,6 +378,16 @@ export class GameEngine {
         levelIndex = workerUpgrades.workDuration - 1;
         upgradeName = 'workDuration';
         break;
+      case 7:
+        costs = WORKER_UPGRADE_COSTS.workerSpeed;
+        levelIndex = workerUpgrades.workerSpeed - 1;
+        upgradeName = 'workerSpeed';
+        break;
+      case 8:
+        costs = WORKER_UPGRADE_COSTS.workerPower;
+        levelIndex = workerUpgrades.workerPower - 1;
+        upgradeName = 'workerPower';
+        break;
       default:
         return;
     }
@@ -385,6 +420,12 @@ export class GameEngine {
           for (const worker of this.state.workers) {
             worker.maxStamina = 100 * workerUpgrades.workDuration;
           }
+          break;
+        case 'workerSpeed':
+          workerUpgrades.workerSpeed++;
+          break;
+        case 'workerPower':
+          workerUpgrades.workerPower++;
           break;
       }
 
@@ -482,12 +523,14 @@ export class GameEngine {
     }
   }
 
-  private hireWorker(): void {
-    const workerCount = this.state.workers.length;
-    const cost = WORKER_COSTS[workerCount];
+  private hireWorker(type: WorkerType): void {
+    // Count workers of this type
+    const sameTypeCount = this.state.workers.filter(w => w.type === type).length;
+    const costs = type === WorkerType.Chopper ? CHOPPER_COSTS : COLLECTOR_COSTS;
+    const cost = costs[sameTypeCount];
 
     if (cost === undefined) {
-      this.addFloatingText(this.state.player.position.x, this.state.player.position.y - 30, 'MAX WORKERS!', '#FF6600');
+      this.addFloatingText(this.state.player.position.x, this.state.player.position.y - 30, `MAX ${type.toUpperCase()}S!`, '#FF6600');
       return;
     }
 
@@ -500,8 +543,15 @@ export class GameEngine {
 
     // Spawn worker near shack
     const { shack, workerUpgrades } = this.state;
+
+    // Collectors rest longer and more often (lower max stamina, longer rest time)
+    const isCollector = type === WorkerType.Collector;
+    const baseMaxStamina = isCollector ? 60 : 100;  // Collectors tire faster
+    const baseRestTime = isCollector ? 8 : 5;       // Collectors rest longer
+
     const worker: Worker = {
       id: `worker_${workerIdCounter++}`,
+      type,
       position: {
         x: shack.x + shack.width / 2 + (Math.random() - 0.5) * 30,
         y: shack.y + shack.height + (Math.random() - 0.5) * 20,
@@ -513,18 +563,20 @@ export class GameEngine {
       wood: 0,
       chopTimer: 0,
       facingRight: true,
-      carryCapacity: 10,
-      speed: 80,
-      chopPower: 1,
+      carryCapacity: isCollector ? 15 : 5,  // Collectors carry more
+      speed: isCollector ? 70 : 80,         // Collectors slightly slower
+      chopPower: isCollector ? 0 : 1,       // Collectors can't chop
       // Fatigue system
       treesChopped: 0,
-      stamina: 100,
-      maxStamina: 100 * workerUpgrades.workDuration,
+      stamina: baseMaxStamina,
+      maxStamina: baseMaxStamina * workerUpgrades.workDuration,
       restTimer: 0,
+      baseRestTime,
     };
 
     this.state.workers.push(worker);
-    this.addFloatingText(worker.position.x, worker.position.y - 20, 'HIRED!', '#00FF00');
+    const typeName = isCollector ? 'Collector' : 'Chopper';
+    this.addFloatingText(worker.position.x, worker.position.y - 20, `${typeName} HIRED!`, '#00FF00');
     this.spawnMoneyParticles(worker.position.x, worker.position.y);
   }
 
@@ -541,6 +593,15 @@ export class GameEngine {
         worker.chopTimer -= deltaTime;
       }
 
+      // Calculate effective speed with upgrades
+      const effectiveSpeed = worker.speed * workerUpgrades.workerSpeed;
+
+      // Calculate effective power (chop damage or carry capacity bonus)
+      const effectivePower = workerUpgrades.workerPower;
+
+      const isChopper = worker.type === WorkerType.Chopper;
+      const isCollector = worker.type === WorkerType.Collector;
+
       switch (worker.state) {
         case WorkerState.Idle:
           // Check if worker needs rest
@@ -549,28 +610,35 @@ export class GameEngine {
             break;
           }
 
-          // Look for a tree to chop or wood to collect
-          if (worker.wood < worker.carryCapacity) {
-            // First check for wood drops nearby
-            const nearbyDrop = this.findNearestWoodDrop(worker.position.x, worker.position.y, 200);
-            if (nearbyDrop) {
-              worker.targetDrop = nearbyDrop;
-              worker.state = WorkerState.Collecting;
-            } else {
-              // Find a tree to chop
-              const nearbyTree = this.findNearestTreeForWorker(worker);
-              if (nearbyTree) {
-                worker.targetTree = nearbyTree;
-                worker.state = WorkerState.MovingToTree;
-              }
+          if (isChopper) {
+            // Choppers only look for trees to chop, never collect or sell
+            const nearbyTree = this.findNearestTreeForWorker(worker);
+            if (nearbyTree) {
+              worker.targetTree = nearbyTree;
+              worker.state = WorkerState.MovingToTree;
             }
-          } else {
-            // Inventory full, go sell
-            worker.state = WorkerState.ReturningToChipper;
+          } else if (isCollector) {
+            // Collectors only look for wood drops to collect
+            if (worker.wood < worker.carryCapacity + effectivePower * 5) {
+              const nearbyDrop = this.findNearestWoodDrop(worker.position.x, worker.position.y, 400);
+              if (nearbyDrop) {
+                worker.targetDrop = nearbyDrop;
+                worker.state = WorkerState.MovingToDrop;
+              }
+            } else {
+              // Inventory full, go sell
+              worker.state = WorkerState.ReturningToChipper;
+            }
           }
           break;
 
         case WorkerState.MovingToTree:
+          // Only choppers use this state
+          if (!isChopper) {
+            worker.state = WorkerState.Idle;
+            break;
+          }
+
           // Check if worker needs rest
           if (worker.stamina <= 0) {
             worker.state = WorkerState.GoingToRest;
@@ -596,13 +664,19 @@ export class GameEngine {
             worker.velocity.y = 0;
           } else {
             // Move toward tree
-            worker.velocity.x = (treeDx / treeDist) * worker.speed;
-            worker.velocity.y = (treeDy / treeDist) * worker.speed;
+            worker.velocity.x = (treeDx / treeDist) * effectiveSpeed;
+            worker.velocity.y = (treeDy / treeDist) * effectiveSpeed;
             worker.facingRight = treeDx > 0;
           }
           break;
 
         case WorkerState.Chopping:
+          // Only choppers use this state
+          if (!isChopper) {
+            worker.state = WorkerState.Idle;
+            break;
+          }
+
           // Check if worker needs rest
           if (worker.stamina <= 0) {
             worker.state = WorkerState.GoingToRest;
@@ -622,7 +696,8 @@ export class GameEngine {
           // Chop the tree
           if (worker.chopTimer <= 0) {
             worker.chopTimer = 0.6; // Worker chop cooldown
-            const wasDestroyed = damageTree(worker.targetTree, worker.chopPower, this.config);
+            const chopDamage = worker.chopPower + effectivePower;  // Power upgrade adds damage
+            const wasDestroyed = damageTree(worker.targetTree, chopDamage, this.config);
 
             // Drain stamina when chopping
             worker.stamina -= 5;
@@ -636,12 +711,25 @@ export class GameEngine {
               this.spawnTreeFallParticles(worker.targetTree.x, worker.targetTree.y);
               worker.treesChopped++;
               worker.targetTree = null;
-              worker.state = WorkerState.Idle;
+              worker.state = WorkerState.Idle;  // Go find another tree
             }
           }
           break;
 
-        case WorkerState.Collecting:
+        case WorkerState.MovingToDrop:
+          // Only collectors use this state
+          if (!isCollector) {
+            worker.state = WorkerState.Idle;
+            break;
+          }
+
+          // Check if worker needs rest
+          if (worker.stamina <= 0) {
+            worker.state = WorkerState.GoingToRest;
+            worker.targetDrop = null;
+            break;
+          }
+
           if (!worker.targetDrop || worker.targetDrop.amount <= 0) {
             worker.state = WorkerState.Idle;
             worker.targetDrop = null;
@@ -649,34 +737,62 @@ export class GameEngine {
           }
 
           // Move toward drop
-          const dropDx = worker.targetDrop.x - worker.position.x;
-          const dropDy = worker.targetDrop.y - worker.position.y;
-          const dropDist = Math.sqrt(dropDx * dropDx + dropDy * dropDy);
+          const moveDx = worker.targetDrop.x - worker.position.x;
+          const moveDy = worker.targetDrop.y - worker.position.y;
+          const moveDist = Math.sqrt(moveDx * moveDx + moveDy * moveDy);
 
-          if (dropDist < 20) {
-            // Pick up wood
-            const canCarry = Math.min(worker.targetDrop.amount, worker.carryCapacity - worker.wood);
-            if (canCarry > 0) {
-              worker.wood += canCarry;
-              worker.targetDrop.amount -= canCarry;
-              this.addFloatingText(worker.position.x, worker.position.y - 20, `+${canCarry}`, '#8B4513');
-            }
-            worker.targetDrop = null;
-
-            // If full, return to chipper
-            if (worker.wood >= worker.carryCapacity) {
-              worker.state = WorkerState.ReturningToChipper;
-            } else {
-              worker.state = WorkerState.Idle;
-            }
+          if (moveDist < 20) {
+            // Close enough to collect
+            worker.state = WorkerState.Collecting;
+            worker.velocity.x = 0;
+            worker.velocity.y = 0;
           } else {
-            worker.velocity.x = (dropDx / dropDist) * worker.speed;
-            worker.velocity.y = (dropDy / dropDist) * worker.speed;
-            worker.facingRight = dropDx > 0;
+            worker.velocity.x = (moveDx / moveDist) * effectiveSpeed;
+            worker.velocity.y = (moveDy / moveDist) * effectiveSpeed;
+            worker.facingRight = moveDx > 0;
+          }
+          break;
+
+        case WorkerState.Collecting:
+          // Only collectors use this state
+          if (!isCollector) {
+            worker.state = WorkerState.Idle;
+            break;
+          }
+
+          if (!worker.targetDrop || worker.targetDrop.amount <= 0) {
+            worker.state = WorkerState.Idle;
+            worker.targetDrop = null;
+            break;
+          }
+
+          // Pick up wood - power upgrade increases carry capacity
+          const effectiveCapacity = worker.carryCapacity + effectivePower * 5;
+          const canCarry = Math.min(worker.targetDrop.amount, effectiveCapacity - worker.wood);
+          if (canCarry > 0) {
+            worker.wood += canCarry;
+            worker.targetDrop.amount -= canCarry;
+            this.addFloatingText(worker.position.x, worker.position.y - 20, `+${canCarry}`, '#8B4513');
+            // Drain stamina when collecting
+            worker.stamina -= 3;
+          }
+          worker.targetDrop = null;
+
+          // If full, return to chipper
+          if (worker.wood >= effectiveCapacity) {
+            worker.state = WorkerState.ReturningToChipper;
+          } else {
+            worker.state = WorkerState.Idle;
           }
           break;
 
         case WorkerState.ReturningToChipper:
+          // Only collectors return to chipper
+          if (!isCollector) {
+            worker.state = WorkerState.Idle;
+            break;
+          }
+
           // Move toward chipper
           const chipDx = chipperCenterX - worker.position.x;
           const chipDy = chipperCenterY - worker.position.y;
@@ -687,13 +803,19 @@ export class GameEngine {
             worker.velocity.x = 0;
             worker.velocity.y = 0;
           } else {
-            worker.velocity.x = (chipDx / chipDist) * worker.speed;
-            worker.velocity.y = (chipDy / chipDist) * worker.speed;
+            worker.velocity.x = (chipDx / chipDist) * effectiveSpeed;
+            worker.velocity.y = (chipDy / chipDist) * effectiveSpeed;
             worker.facingRight = chipDx > 0;
           }
           break;
 
         case WorkerState.Selling:
+          // Only collectors sell
+          if (!isCollector) {
+            worker.state = WorkerState.Idle;
+            break;
+          }
+
           if (worker.wood > 0) {
             const earnings = worker.wood * this.config.woodPricePerUnit;
             this.state.money += earnings;
@@ -720,11 +842,11 @@ export class GameEngine {
             worker.state = WorkerState.Resting;
             worker.velocity.x = 0;
             worker.velocity.y = 0;
-            worker.restTimer = 5; // 5 seconds base rest time
+            worker.restTimer = worker.baseRestTime;
             this.addFloatingText(worker.position.x, worker.position.y - 20, 'Zzz...', '#88AAFF');
           } else {
-            worker.velocity.x = (shackDx / shackDist) * worker.speed;
-            worker.velocity.y = (shackDy / shackDist) * worker.speed;
+            worker.velocity.x = (shackDx / shackDist) * effectiveSpeed;
+            worker.velocity.y = (shackDy / shackDist) * effectiveSpeed;
             worker.facingRight = shackDx > 0;
           }
           break;
@@ -792,8 +914,12 @@ export class GameEngine {
         const treeRadius = TREE_STATS[tree.type].hitboxRadius;
         const minDist = entityRadius + treeRadius;
 
+        // Tree hitbox is on the trunk, offset up from the base (tree.y)
+        // The tree sprite is drawn with its base at tree.y, so we offset up by ~15 pixels
+        const treeHitboxY = tree.y - 15;
+
         const dx = position.x - tree.x;
-        const dy = position.y - tree.y;
+        const dy = position.y - treeHitboxY;
         const dist = Math.sqrt(dx * dx + dy * dy);
 
         if (dist < minDist && dist > 0) {
