@@ -26,6 +26,29 @@ import { createSpriteSheet } from './sprites';
 let dropIdCounter = 0;
 let workerIdCounter = 0;
 
+const SAVE_KEY = 'chopping_choppers_save';
+const SAVE_INTERVAL = 5000; // Save every 5 seconds
+
+interface SaveData {
+  money: number;
+  upgrades: {
+    axePower: number;
+    moveSpeed: number;
+    chopSpeed: number;
+    carryCapacity: number;
+  };
+  workerUpgrades: {
+    restSpeed: number;
+    workDuration: number;
+    workerSpeed: number;
+    workerPower: number;
+  };
+  totalWoodChopped: number;
+  totalMoneyEarned: number;
+  chopperCount: number;
+  collectorCount: number;
+}
+
 export class GameEngine {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
@@ -39,6 +62,7 @@ export class GameEngine {
   private upgradeKeyHandler: (e: KeyboardEvent) => void;
   private hireKeyHandler: (e: KeyboardEvent) => void;
   private wheelHandler: (e: WheelEvent) => void;
+  private saveIntervalId: number = 0;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -92,8 +116,14 @@ export class GameEngine {
       workers: [],
     };
 
+    // Load saved progress
+    this.loadProgress();
+
     // Generate initial chunks around player
     updateChunks(this.state.chunks, this.state.camera, this.config);
+
+    // Setup auto-save
+    this.saveIntervalId = window.setInterval(() => this.saveProgress(), SAVE_INTERVAL);
 
     // Setup upgrade key handler
     this.upgradeKeyHandler = (e: KeyboardEvent) => {
@@ -141,10 +171,99 @@ export class GameEngine {
       cancelAnimationFrame(this.animationId);
       this.animationId = 0;
     }
+    if (this.saveIntervalId) {
+      clearInterval(this.saveIntervalId);
+      this.saveIntervalId = 0;
+    }
+    this.saveProgress(); // Save on stop
     this.cleanupInput();
     window.removeEventListener('keydown', this.upgradeKeyHandler);
     window.removeEventListener('keydown', this.hireKeyHandler);
     this.canvas.removeEventListener('wheel', this.wheelHandler);
+  }
+
+  private saveProgress(): void {
+    try {
+      const saveData: SaveData = {
+        money: this.state.money,
+        upgrades: { ...this.state.upgrades },
+        workerUpgrades: { ...this.state.workerUpgrades },
+        totalWoodChopped: this.state.totalWoodChopped,
+        totalMoneyEarned: this.state.totalMoneyEarned,
+        chopperCount: this.state.workers.filter(w => w.type === WorkerType.Chopper).length,
+        collectorCount: this.state.workers.filter(w => w.type === WorkerType.Collector).length,
+      };
+      localStorage.setItem(SAVE_KEY, JSON.stringify(saveData));
+    } catch (e) {
+      console.warn('Failed to save progress:', e);
+    }
+  }
+
+  private loadProgress(): void {
+    try {
+      const saved = localStorage.getItem(SAVE_KEY);
+      if (!saved) return;
+
+      const data: SaveData = JSON.parse(saved);
+
+      // Restore money and stats
+      this.state.money = data.money || 0;
+      this.state.totalWoodChopped = data.totalWoodChopped || 0;
+      this.state.totalMoneyEarned = data.totalMoneyEarned || 0;
+
+      // Restore upgrades
+      if (data.upgrades) {
+        this.state.upgrades = { ...this.state.upgrades, ...data.upgrades };
+      }
+      if (data.workerUpgrades) {
+        this.state.workerUpgrades = { ...this.state.workerUpgrades, ...data.workerUpgrades };
+      }
+
+      // Restore workers
+      for (let i = 0; i < (data.chopperCount || 0); i++) {
+        this.spawnWorkerSilent(WorkerType.Chopper);
+      }
+      for (let i = 0; i < (data.collectorCount || 0); i++) {
+        this.spawnWorkerSilent(WorkerType.Collector);
+      }
+
+      console.log('Progress loaded!');
+    } catch (e) {
+      console.warn('Failed to load progress:', e);
+    }
+  }
+
+  private spawnWorkerSilent(type: WorkerType): void {
+    const { shack, workerUpgrades } = this.state;
+    const isCollector = type === WorkerType.Collector;
+    const baseMaxStamina = isCollector ? 60 : 100;
+    const baseRestTime = isCollector ? 8 : 5;
+
+    const worker: Worker = {
+      id: `worker_${workerIdCounter++}`,
+      type,
+      position: {
+        x: shack.x + shack.width / 2 + (Math.random() - 0.5) * 30,
+        y: shack.y + shack.height + (Math.random() - 0.5) * 20,
+      },
+      velocity: { x: 0, y: 0 },
+      state: WorkerState.Idle,
+      targetTree: null,
+      targetDrop: null,
+      wood: 0,
+      chopTimer: 0,
+      facingRight: true,
+      carryCapacity: isCollector ? 15 : 5,
+      speed: isCollector ? 70 : 80,
+      chopPower: isCollector ? 0 : 1,
+      treesChopped: 0,
+      stamina: baseMaxStamina * workerUpgrades.workDuration,
+      maxStamina: baseMaxStamina * workerUpgrades.workDuration,
+      restTimer: 0,
+      baseRestTime,
+    };
+
+    this.state.workers.push(worker);
   }
 
   resize(width: number, height: number): void {

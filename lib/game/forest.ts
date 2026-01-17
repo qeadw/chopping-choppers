@@ -45,9 +45,9 @@ function isInClearZone(x: number, y: number): boolean {
 
 // Check if a new tree would overlap with existing trees
 function wouldOverlap(x: number, y: number, type: TreeType, existingTrees: Tree[]): boolean {
-  const newRadius = TREE_STATS[type].hitboxRadius + 8; // Add padding
+  const newRadius = TREE_STATS[type].hitboxRadius + 2; // Reduced padding for denser forest
   for (const tree of existingTrees) {
-    const existingRadius = TREE_STATS[tree.type].hitboxRadius + 8;
+    const existingRadius = TREE_STATS[tree.type].hitboxRadius + 2;
     const minDist = newRadius + existingRadius;
     const dx = x - tree.x;
     const dy = y - tree.y;
@@ -68,12 +68,12 @@ export function generateChunk(chunkX: number, chunkY: number, config: GameConfig
   const worldX = chunkX * config.chunkSize;
   const worldY = chunkY * config.chunkSize;
 
-  // Generate 12-20 trees per chunk randomly
-  const treeCount = 12 + Math.floor(rng.next() * 9);  // 12 to 20 trees
+  // Generate 192-320 trees per chunk randomly (16x increase)
+  const treeCount = 192 + Math.floor(rng.next() * 129);  // 192 to 320 trees
 
   // Try to place trees, with multiple attempts to avoid overlap
   let attempts = 0;
-  const maxAttempts = treeCount * 3;
+  const maxAttempts = treeCount * 5;
 
   while (trees.length < treeCount && attempts < maxAttempts) {
     attempts++;
