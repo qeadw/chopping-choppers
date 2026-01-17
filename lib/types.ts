@@ -38,6 +38,12 @@ export enum TreeType {
   LargePine = 1,
   Oak = 2,
   DeadTree = 3,
+  Birch = 4,
+  Willow = 5,
+  CherryBlossom = 6,
+  GiantRedwood = 7,
+  AncientOak = 8,
+  MagicTree = 9,
 }
 
 // Wood value, health, and hitbox by tree type
@@ -46,6 +52,12 @@ export const TREE_STATS: Record<TreeType, { health: number; woodDrop: number; hi
   [TreeType.LargePine]: { health: 4, woodDrop: 3, hitboxRadius: 8 },
   [TreeType.Oak]: { health: 5, woodDrop: 4, hitboxRadius: 10 },
   [TreeType.DeadTree]: { health: 1, woodDrop: 1, hitboxRadius: 5 },
+  [TreeType.Birch]: { health: 3, woodDrop: 2, hitboxRadius: 6 },
+  [TreeType.Willow]: { health: 6, woodDrop: 5, hitboxRadius: 12 },
+  [TreeType.CherryBlossom]: { health: 8, woodDrop: 8, hitboxRadius: 10 },
+  [TreeType.GiantRedwood]: { health: 15, woodDrop: 15, hitboxRadius: 14 },
+  [TreeType.AncientOak]: { health: 20, woodDrop: 25, hitboxRadius: 16 },
+  [TreeType.MagicTree]: { health: 30, woodDrop: 50, hitboxRadius: 12 },
 };
 
 export interface WoodDrop {
@@ -139,7 +151,7 @@ export interface Worker {
   baseRestTime: number;      // Base rest duration for this worker type
 }
 
-export const CHOPPER_COSTS = [100, 300, 700, 1500, 3000, 6000, 12000];
+export const CHOPPER_COSTS = [12, 37, 87, 187, 375, 750, 1500];
 export const COLLECTOR_COSTS = [150, 400, 900, 2000, 4000, 8000, 16000];
 
 export interface ChipperZone {

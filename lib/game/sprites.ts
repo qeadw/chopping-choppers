@@ -29,6 +29,60 @@ const COLORS = {
     light: '#7A6555',
     highlight: '#98816E',
   },
+  birch: {
+    darkest: '#1E4D2E',
+    dark: '#2E6D3F',
+    base: '#4E9D5F',
+    light: '#6EBD7F',
+    highlight: '#8EDD9F',
+    barkDark: '#C8C8C8',
+    bark: '#E8E8E8',
+    barkLight: '#FFFFFF',
+    barkStripe: '#2A2A2A',
+  },
+  willow: {
+    darkest: '#1A3D1A',
+    dark: '#2A5D2A',
+    base: '#4A8D4A',
+    light: '#6ABD6A',
+    highlight: '#8ADD8A',
+    vine: '#3A6D3A',
+  },
+  cherry: {
+    darkest: '#8B2252',
+    dark: '#C71585',
+    base: '#FF69B4',
+    light: '#FFB6C1',
+    highlight: '#FFC0CB',
+    petal: '#FFDAE9',
+  },
+  redwood: {
+    darkest: '#4A1A0A',
+    dark: '#6A2A1A',
+    base: '#8A4A2A',
+    light: '#AA6A4A',
+    highlight: '#CA8A6A',
+    barkDark: '#3A1505',
+    bark: '#5A2A15',
+    barkLight: '#7A4A35',
+  },
+  ancient: {
+    darkest: '#0A2A0A',
+    dark: '#1A4A1A',
+    base: '#2A6A2A',
+    light: '#4A9A4A',
+    highlight: '#6ACA6A',
+    moss: '#4A6A2A',
+  },
+  magic: {
+    darkest: '#1A0A3A',
+    dark: '#3A1A6A',
+    base: '#6A3AAA',
+    light: '#9A6ADA',
+    highlight: '#CAAFFA',
+    glow: '#E0D0FF',
+    sparkle: '#FFFFFF',
+  },
   player: {
     skin: '#FFDAB9',
     skinShadow: '#E5B894',
@@ -367,6 +421,272 @@ function createDeadTreeSprite(): HTMLCanvasElement {
   return canvas;
 }
 
+function createBirchSprite(): HTMLCanvasElement {
+  const canvas = createCanvas(16, 28);
+  const ctx = canvas.getContext('2d')!;
+  const { darkest, dark, base, light, highlight, barkDark, bark, barkLight, barkStripe } = COLORS.birch;
+
+  // White bark trunk with dark stripes
+  for (let y = 14; y < 28; y++) {
+    setPixel(ctx, 6, y, barkDark);
+    setPixel(ctx, 7, y, bark);
+    setPixel(ctx, 8, y, bark);
+    setPixel(ctx, 9, y, barkLight);
+    // Dark horizontal stripes
+    if (y % 4 === 0) {
+      setPixel(ctx, 7, y, barkStripe);
+      setPixel(ctx, 8, y, barkStripe);
+    }
+  }
+
+  // Leaves - small delicate canopy
+  for (let y = 0; y < 16; y++) {
+    for (let x = 0; x < 16; x++) {
+      const dx = x - 8;
+      const dy = y - 7;
+      const dist = Math.sqrt(dx * dx * 0.8 + dy * dy);
+      const noise = Math.sin(x * 2) * 0.5 + Math.cos(y * 1.5) * 0.5;
+
+      if (dist + noise < 7) {
+        let color: string;
+        if (dx < -2) color = dy < 0 ? dark : darkest;
+        else if (dx > 2) color = dy < 0 ? highlight : light;
+        else color = dy < 0 ? light : base;
+        setPixel(ctx, x, y, color);
+      }
+    }
+  }
+
+  return canvas;
+}
+
+function createWillowSprite(): HTMLCanvasElement {
+  const canvas = createCanvas(28, 36);
+  const ctx = canvas.getContext('2d')!;
+  const { darkest, dark, base, light, highlight, vine } = COLORS.willow;
+  const trunk = COLORS.trunk;
+
+  // Thick trunk
+  for (let y = 18; y < 36; y++) {
+    for (let x = 11; x <= 16; x++) {
+      if (x <= 12) setPixel(ctx, x, y, trunk.dark);
+      else if (x >= 15) setPixel(ctx, x, y, trunk.highlight);
+      else setPixel(ctx, x, y, trunk.base);
+    }
+  }
+
+  // Drooping canopy base
+  for (let y = 2; y < 20; y++) {
+    for (let x = 2; x < 26; x++) {
+      const dx = x - 14;
+      const dy = y - 10;
+      const dist = Math.sqrt(dx * dx * 0.6 + dy * dy * 0.8);
+
+      if (dist < 10 && y < 16) {
+        let color = dx < -3 ? darkest : dx > 3 ? light : base;
+        setPixel(ctx, x, y, color);
+      }
+    }
+  }
+
+  // Hanging vines/branches
+  for (let vine_x = 3; vine_x < 25; vine_x += 3) {
+    const vineLength = 10 + Math.sin(vine_x) * 4;
+    for (let y = 12; y < 12 + vineLength && y < 34; y++) {
+      const color = y % 2 === 0 ? vine : dark;
+      setPixel(ctx, vine_x, y, color);
+      if (y % 3 === 0) setPixel(ctx, vine_x + 1, y, light);
+    }
+  }
+
+  return canvas;
+}
+
+function createCherryBlossomSprite(): HTMLCanvasElement {
+  const canvas = createCanvas(24, 28);
+  const ctx = canvas.getContext('2d')!;
+  const { darkest, dark, base, light, highlight, petal } = COLORS.cherry;
+  const trunk = COLORS.trunk;
+
+  // Trunk with slight curve
+  for (let y = 16; y < 28; y++) {
+    const offset = Math.floor((y - 16) / 4);
+    setPixel(ctx, 10 + offset, y, trunk.dark);
+    setPixel(ctx, 11 + offset, y, trunk.base);
+    setPixel(ctx, 12 + offset, y, trunk.light);
+  }
+
+  // Pink blossom canopy - cloud-like shape
+  for (let y = 0; y < 18; y++) {
+    for (let x = 0; x < 24; x++) {
+      const dx = x - 12;
+      const dy = y - 8;
+      const dist = Math.sqrt(dx * dx * 0.7 + dy * dy);
+      const noise = Math.sin(x * 1.8) * 1.2 + Math.cos(y * 1.4) * 1.2;
+
+      if (dist + noise < 9) {
+        let color: string;
+        if (dy < -3) color = highlight;
+        else if (dx < -4) color = dark;
+        else if (dx > 4) color = light;
+        else color = base;
+        setPixel(ctx, x, y, color);
+      }
+    }
+  }
+
+  // Scattered petals on top
+  const petals = [[4, 2], [8, 1], [15, 3], [19, 2], [12, 0], [6, 4], [18, 5]];
+  petals.forEach(([x, y]) => setPixel(ctx, x, y, petal));
+
+  return canvas;
+}
+
+function createGiantRedwoodSprite(): HTMLCanvasElement {
+  const canvas = createCanvas(28, 48);
+  const ctx = canvas.getContext('2d')!;
+  const { darkest, dark, base, light, highlight, barkDark, bark, barkLight } = COLORS.redwood;
+
+  // Massive trunk
+  for (let y = 20; y < 48; y++) {
+    const width = y > 40 ? 10 : 8;
+    const startX = 14 - width / 2;
+    for (let x = startX; x < startX + width; x++) {
+      const relX = (x - startX) / width;
+      if (relX < 0.25) setPixel(ctx, x, y, barkDark);
+      else if (relX > 0.75) setPixel(ctx, x, y, barkLight);
+      else setPixel(ctx, x, y, bark);
+    }
+  }
+
+  // Tall narrow canopy
+  for (let y = 0; y < 28; y++) {
+    const layerWidth = Math.max(2, 12 - y * 0.3);
+    const startX = 14 - layerWidth / 2;
+    for (let x = Math.floor(startX); x < Math.ceil(startX + layerWidth); x++) {
+      if (x < 0 || x >= 28) continue;
+      const relX = (x - startX) / layerWidth;
+      let color: string;
+      if (relX < 0.3) color = darkest;
+      else if (relX > 0.7) color = light;
+      else color = y % 3 === 0 ? dark : base;
+      setPixel(ctx, x, y, color);
+    }
+    // Add highlight touches
+    if (y % 4 === 0 && layerWidth > 4) {
+      setPixel(ctx, Math.ceil(startX + layerWidth - 2), y, highlight);
+    }
+  }
+
+  return canvas;
+}
+
+function createAncientOakSprite(): HTMLCanvasElement {
+  const canvas = createCanvas(32, 40);
+  const ctx = canvas.getContext('2d')!;
+  const { darkest, dark, base, light, highlight, moss } = COLORS.ancient;
+  const trunk = COLORS.trunk;
+
+  // Massive gnarled trunk with roots
+  for (let y = 24; y < 40; y++) {
+    const width = y > 35 ? 12 : 8;
+    const startX = 16 - width / 2;
+    for (let x = startX; x < startX + width; x++) {
+      const relX = (x - startX) / width;
+      if (relX < 0.25) setPixel(ctx, x, y, trunk.dark);
+      else if (relX > 0.75) setPixel(ctx, x, y, trunk.highlight);
+      else setPixel(ctx, x, y, trunk.base);
+    }
+    // Root extensions at bottom
+    if (y > 36) {
+      setPixel(ctx, startX - (y - 36), y, trunk.dark);
+      setPixel(ctx, startX + width + (y - 36), y, trunk.light);
+    }
+  }
+
+  // Huge spreading canopy
+  for (let y = 0; y < 28; y++) {
+    for (let x = 0; x < 32; x++) {
+      const dx = x - 16;
+      const dy = y - 12;
+      const distX = dx / 14;
+      const distY = dy / 10;
+      const dist = Math.sqrt(distX * distX + distY * distY);
+      const noise = Math.sin(x * 1.2) * 0.15 + Math.cos(y * 1.1) * 0.15;
+
+      if (dist + noise < 1) {
+        let color: string;
+        if (dx < -5 && dy > 2) color = darkest;
+        else if (dx < -2 || dy > 4) color = dark;
+        else if (dx > 5 && dy < -2) color = highlight;
+        else if (dx > 2 && dy < 0) color = light;
+        else color = base;
+        setPixel(ctx, x, y, color);
+      }
+    }
+  }
+
+  // Moss patches on trunk and lower canopy
+  const mossSpots = [[14, 26], [17, 28], [13, 30], [18, 32], [10, 22], [22, 23]];
+  mossSpots.forEach(([x, y]) => setPixel(ctx, x, y, moss));
+
+  return canvas;
+}
+
+function createMagicTreeSprite(): HTMLCanvasElement {
+  const canvas = createCanvas(24, 32);
+  const ctx = canvas.getContext('2d')!;
+  const { darkest, dark, base, light, highlight, glow, sparkle } = COLORS.magic;
+
+  // Mystical purple trunk
+  for (let y = 18; y < 32; y++) {
+    setPixel(ctx, 10, y, darkest);
+    setPixel(ctx, 11, y, dark);
+    setPixel(ctx, 12, y, dark);
+    setPixel(ctx, 13, y, base);
+    // Glowing veins on trunk
+    if (y % 3 === 0) {
+      setPixel(ctx, 11, y, light);
+      setPixel(ctx, 12, y, light);
+    }
+  }
+
+  // Magical glowing canopy
+  for (let y = 0; y < 20; y++) {
+    for (let x = 0; x < 24; x++) {
+      const dx = x - 12;
+      const dy = y - 9;
+      const dist = Math.sqrt(dx * dx * 0.7 + dy * dy);
+      const noise = Math.sin(x * 2.5 + y * 1.5) * 1.5;
+
+      if (dist + noise < 10) {
+        let color: string;
+        if (dist < 4) color = glow;
+        else if (dx < -3) color = dark;
+        else if (dx > 3) color = highlight;
+        else if (dy < -2) color = light;
+        else color = base;
+        setPixel(ctx, x, y, color);
+      }
+    }
+  }
+
+  // Sparkle effects scattered throughout
+  const sparkles = [[6, 4], [18, 3], [10, 6], [14, 2], [8, 10], [16, 8], [12, 1], [4, 7], [20, 6]];
+  sparkles.forEach(([x, y]) => setPixel(ctx, x, y, sparkle));
+
+  // Outer glow ring
+  for (let angle = 0; angle < Math.PI * 2; angle += 0.3) {
+    const x = Math.round(12 + Math.cos(angle) * 10);
+    const y = Math.round(9 + Math.sin(angle) * 8);
+    if (x >= 0 && x < 24 && y >= 0 && y < 20) {
+      setPixel(ctx, x, y, glow);
+    }
+  }
+
+  return canvas;
+}
+
 // Stump sprites
 function createSmallStumpSprite(): HTMLCanvasElement {
   const canvas = createCanvas(16, 10);
@@ -468,6 +788,199 @@ function createDeadStumpSprite(): HTMLCanvasElement {
     setPixel(ctx, 9, y, base);
     setPixel(ctx, 10, y, light);
   }
+
+  return canvas;
+}
+
+function createBirchStumpSprite(): HTMLCanvasElement {
+  const canvas = createCanvas(16, 10);
+  const ctx = canvas.getContext('2d')!;
+  const { barkDark, bark, barkLight, barkStripe } = COLORS.birch;
+  const wood = COLORS.wood;
+
+  // White bark stump
+  for (let y = 4; y < 10; y++) {
+    setPixel(ctx, 5, y, barkDark);
+    setPixel(ctx, 6, y, bark);
+    setPixel(ctx, 7, y, bark);
+    setPixel(ctx, 8, y, bark);
+    setPixel(ctx, 9, y, barkLight);
+    if (y === 6) {
+      setPixel(ctx, 6, y, barkStripe);
+      setPixel(ctx, 7, y, barkStripe);
+      setPixel(ctx, 8, y, barkStripe);
+    }
+  }
+
+  // Top
+  for (let x = 5; x <= 9; x++) {
+    setPixel(ctx, x, 3, wood.base);
+    setPixel(ctx, x, 4, wood.light);
+  }
+  setPixel(ctx, 7, 3, wood.ring);
+
+  return canvas;
+}
+
+function createWillowStumpSprite(): HTMLCanvasElement {
+  const canvas = createCanvas(28, 12);
+  const ctx = canvas.getContext('2d')!;
+  const trunk = COLORS.trunk;
+  const wood = COLORS.wood;
+
+  // Wide stump
+  for (let y = 4; y < 12; y++) {
+    for (let x = 9; x <= 18; x++) {
+      if (x <= 11) setPixel(ctx, x, y, trunk.dark);
+      else if (x >= 16) setPixel(ctx, x, y, trunk.highlight);
+      else setPixel(ctx, x, y, trunk.base);
+    }
+  }
+
+  // Top surface
+  for (let x = 9; x <= 18; x++) {
+    setPixel(ctx, x, 2, wood.dark);
+    setPixel(ctx, x, 3, wood.base);
+    setPixel(ctx, x, 4, wood.light);
+  }
+  setPixel(ctx, 12, 3, wood.ring);
+  setPixel(ctx, 13, 3, wood.ring);
+  setPixel(ctx, 14, 3, wood.ring);
+
+  return canvas;
+}
+
+function createCherryStumpSprite(): HTMLCanvasElement {
+  const canvas = createCanvas(24, 10);
+  const ctx = canvas.getContext('2d')!;
+  const trunk = COLORS.trunk;
+  const wood = COLORS.wood;
+  const { petal } = COLORS.cherry;
+
+  // Stump
+  for (let y = 4; y < 10; y++) {
+    setPixel(ctx, 10, y, trunk.dark);
+    setPixel(ctx, 11, y, trunk.base);
+    setPixel(ctx, 12, y, trunk.light);
+  }
+
+  // Top
+  for (let x = 10; x <= 12; x++) {
+    setPixel(ctx, x, 3, wood.base);
+    setPixel(ctx, x, 4, wood.light);
+  }
+
+  // Fallen petals around stump
+  const petals = [[7, 8], [15, 7], [8, 6], [14, 9]];
+  petals.forEach(([x, y]) => setPixel(ctx, x, y, petal));
+
+  return canvas;
+}
+
+function createRedwoodStumpSprite(): HTMLCanvasElement {
+  const canvas = createCanvas(28, 14);
+  const ctx = canvas.getContext('2d')!;
+  const { barkDark, bark, barkLight } = COLORS.redwood;
+  const wood = COLORS.wood;
+
+  // Massive stump
+  for (let y = 4; y < 14; y++) {
+    const width = y > 10 ? 12 : 10;
+    const startX = 14 - width / 2;
+    for (let x = startX; x < startX + width; x++) {
+      const relX = (x - startX) / width;
+      if (relX < 0.25) setPixel(ctx, x, y, barkDark);
+      else if (relX > 0.75) setPixel(ctx, x, y, barkLight);
+      else setPixel(ctx, x, y, bark);
+    }
+  }
+
+  // Top surface with many rings
+  for (let x = 9; x <= 18; x++) {
+    setPixel(ctx, x, 2, wood.dark);
+    setPixel(ctx, x, 3, wood.base);
+    setPixel(ctx, x, 4, wood.light);
+  }
+  // Multiple rings
+  for (let r = 0; r < 4; r++) {
+    setPixel(ctx, 11 + r, 3, wood.ring);
+    setPixel(ctx, 15 - r, 3, wood.ring);
+  }
+
+  return canvas;
+}
+
+function createAncientStumpSprite(): HTMLCanvasElement {
+  const canvas = createCanvas(32, 14);
+  const ctx = canvas.getContext('2d')!;
+  const trunk = COLORS.trunk;
+  const wood = COLORS.wood;
+  const { moss } = COLORS.ancient;
+
+  // Huge stump with roots
+  for (let y = 4; y < 14; y++) {
+    const width = y > 10 ? 14 : 10;
+    const startX = 16 - width / 2;
+    for (let x = startX; x < startX + width; x++) {
+      const relX = (x - startX) / width;
+      if (relX < 0.25) setPixel(ctx, x, y, trunk.dark);
+      else if (relX > 0.75) setPixel(ctx, x, y, trunk.highlight);
+      else setPixel(ctx, x, y, trunk.base);
+    }
+    // Root extensions
+    if (y > 10) {
+      setPixel(ctx, startX - (y - 10), y, trunk.dark);
+      setPixel(ctx, startX + width + (y - 10), y, trunk.light);
+    }
+  }
+
+  // Top surface
+  for (let x = 11; x <= 20; x++) {
+    setPixel(ctx, x, 2, wood.dark);
+    setPixel(ctx, x, 3, wood.base);
+    setPixel(ctx, x, 4, wood.light);
+  }
+  // Many rings (ancient!)
+  for (let r = 0; r < 4; r++) {
+    setPixel(ctx, 13 + r, 3, wood.ring);
+    setPixel(ctx, 18 - r, 3, wood.ring);
+  }
+
+  // Moss growing on stump
+  setPixel(ctx, 12, 6, moss);
+  setPixel(ctx, 19, 7, moss);
+  setPixel(ctx, 13, 8, moss);
+
+  return canvas;
+}
+
+function createMagicStumpSprite(): HTMLCanvasElement {
+  const canvas = createCanvas(24, 12);
+  const ctx = canvas.getContext('2d')!;
+  const { darkest, dark, base, light, glow, sparkle } = COLORS.magic;
+
+  // Mystical stump
+  for (let y = 4; y < 12; y++) {
+    setPixel(ctx, 10, y, darkest);
+    setPixel(ctx, 11, y, dark);
+    setPixel(ctx, 12, y, dark);
+    setPixel(ctx, 13, y, base);
+    // Glowing veins
+    if (y === 6 || y === 9) {
+      setPixel(ctx, 11, y, light);
+      setPixel(ctx, 12, y, light);
+    }
+  }
+
+  // Glowing top
+  for (let x = 10; x <= 13; x++) {
+    setPixel(ctx, x, 3, base);
+    setPixel(ctx, x, 4, glow);
+  }
+
+  // Sparkles emanating from stump
+  const sparkles = [[8, 2], [15, 3], [7, 5], [16, 4]];
+  sparkles.forEach(([x, y]) => setPixel(ctx, x, y, sparkle));
 
   return canvas;
 }
@@ -1172,16 +1685,28 @@ function createShackSprite(): HTMLCanvasElement {
 export function createSpriteSheet(): SpriteSheet {
   return {
     trees: [
-      createSmallPineSprite(),
-      createLargePineSprite(),
-      createOakSprite(),
-      createDeadTreeSprite(),
+      createSmallPineSprite(),      // 0 - SmallPine
+      createLargePineSprite(),      // 1 - LargePine
+      createOakSprite(),            // 2 - Oak
+      createDeadTreeSprite(),       // 3 - DeadTree
+      createBirchSprite(),          // 4 - Birch
+      createWillowSprite(),         // 5 - Willow
+      createCherryBlossomSprite(),  // 6 - CherryBlossom
+      createGiantRedwoodSprite(),   // 7 - GiantRedwood
+      createAncientOakSprite(),     // 8 - AncientOak
+      createMagicTreeSprite(),      // 9 - MagicTree
     ],
     treeStumps: [
-      createSmallStumpSprite(),
-      createLargeStumpSprite(),
-      createOakStumpSprite(),
-      createDeadStumpSprite(),
+      createSmallStumpSprite(),     // 0 - SmallPine
+      createLargeStumpSprite(),     // 1 - LargePine
+      createOakStumpSprite(),       // 2 - Oak
+      createDeadStumpSprite(),      // 3 - DeadTree
+      createBirchStumpSprite(),     // 4 - Birch
+      createWillowStumpSprite(),    // 5 - Willow
+      createCherryStumpSprite(),    // 6 - CherryBlossom
+      createRedwoodStumpSprite(),   // 7 - GiantRedwood
+      createAncientStumpSprite(),   // 8 - AncientOak
+      createMagicStumpSprite(),     // 9 - MagicTree
     ],
     player: createPlayerSprite(),
     playerChop: createPlayerChopSprite(),
