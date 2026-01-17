@@ -398,8 +398,8 @@ export class GameEngine {
     // Start chop animation
     startChop(this.state.player, this.config, this.state.upgrades);
 
-    // Deal damage to tree
-    const damage = this.state.upgrades.axePower;
+    // Deal damage to tree (base power divided by 8)
+    const damage = this.state.upgrades.axePower / 8;
     const wasDestroyed = damageTree(nearestTree, damage, this.config);
 
     // Spawn wood particles on hit
@@ -957,6 +957,14 @@ export class GameEngine {
             this.addFloatingText(worker.position.x, worker.position.y - 20, `+${canCarry}`, '#8B4513');
             // Drain stamina when collecting
             worker.stamina -= 3;
+
+            // Remove wood drop from array if fully collected
+            if (worker.targetDrop.amount <= 0) {
+              const dropIndex = this.state.woodDrops.indexOf(worker.targetDrop);
+              if (dropIndex !== -1) {
+                this.state.woodDrops.splice(dropIndex, 1);
+              }
+            }
           }
           worker.targetDrop = null;
 
