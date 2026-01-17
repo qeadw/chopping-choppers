@@ -260,8 +260,8 @@ export class GameEngine {
       chopTimer: 0,
       facingRight: true,
       carryCapacity: isCollector ? 2 : 5,
-      speed: isCollector ? 9 : 80,
-      chopPower: isCollector ? 0 : 1,
+      speed: isCollector ? 9 : 10,
+      chopPower: isCollector ? 0 : 0.125,
       treesChopped: 0,
       stamina: baseMaxStamina * workerUpgrades.workDuration,
       maxStamina: baseMaxStamina * workerUpgrades.workDuration,
@@ -689,8 +689,8 @@ export class GameEngine {
       chopTimer: 0,
       facingRight: true,
       carryCapacity: isCollector ? 2 : 5,   // Collectors carry less
-      speed: isCollector ? 9 : 80,          // Collectors much slower
-      chopPower: isCollector ? 0 : 1,       // Collectors can't chop
+      speed: isCollector ? 9 : 10,          // Both workers very slow
+      chopPower: isCollector ? 0 : 0.125,   // Choppers much weaker
       // Fatigue system
       treesChopped: 0,
       stamina: baseMaxStamina,
