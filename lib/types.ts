@@ -219,6 +219,7 @@ export interface GameState {
   totalWoodChopped: number;
   totalMoneyEarned: number;
   workers: Worker[];
+  showStumpTimers: boolean;
 }
 
 export interface SpriteSheet {

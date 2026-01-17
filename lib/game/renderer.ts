@@ -76,7 +76,7 @@ export function render(
       drawPlayer(ctx, state, sprites, config, effectiveCamera, scale);
       playerDrawn = true;
     }
-    drawTree(ctx, tree, effectiveCamera, sprites, scale, config);
+    drawTree(ctx, tree, effectiveCamera, sprites, scale, config, state.showStumpTimers);
   }
 
   if (!playerDrawn) {
@@ -140,7 +140,8 @@ function drawTree(
   camera: { x: number; y: number },
   sprites: SpriteSheet,
   scale: number,
-  config: GameConfig
+  config: GameConfig,
+  showTimers: boolean
 ): void {
   const sprite = getTreeSprite(sprites, tree.type, tree.isDead);
 
@@ -172,8 +173,8 @@ function drawTree(
     ctx.fillRect(barX, barY, barWidth * healthPercent, barHeight);
   }
 
-  // Draw respawn timer if dead
-  if (tree.isDead && tree.respawnTimer > 0) {
+  // Draw respawn timer if dead and timers are enabled
+  if (tree.isDead && tree.respawnTimer > 0 && showTimers) {
     const screenCenterX = (tree.x - camera.x) * scale;
     const screenCenterY = (tree.y - camera.y - 10) * scale;
 
@@ -523,7 +524,7 @@ function drawUI(
   ctx.fillStyle = '#ccc';
   ctx.font = '12px monospace';
   ctx.textAlign = 'left';
-  ctx.fillText('WASD: Move | Click: Chop | E: Sell | J: Hire Chopper | K: Hire Collector | Scroll: Zoom', padding + 10, controlsY + 16);
+  ctx.fillText('WASD: Move | Click: Chop | E: Sell | J: Chopper | K: Collector | T: Timers | Scroll: Zoom', padding + 10, controlsY + 16);
 
   // Capacity warning
   if (state.wood >= state.upgrades.carryCapacity) {
@@ -531,6 +532,45 @@ function drawUI(
     ctx.font = 'bold 16px monospace';
     ctx.textAlign = 'center';
     ctx.fillText('INVENTORY FULL - Sell wood at the chipper!', ctx.canvas.width / 2, 120);
+  }
+
+  // Bottom-right: Worker stats panel
+  if (state.workers.length > 0) {
+    const workerPanelWidth = 180;
+    const workerPanelHeight = Math.min(200, 30 + state.workers.length * 22);
+    const workerPanelX = ctx.canvas.width - workerPanelWidth - padding;
+    const workerPanelY = ctx.canvas.height - workerPanelHeight - padding - 40;
+
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(workerPanelX, workerPanelY, workerPanelWidth, workerPanelHeight);
+
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 12px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('WORKERS', workerPanelX + workerPanelWidth / 2, workerPanelY + 16);
+
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'left';
+
+    let yOffset = 32;
+    for (let i = 0; i < state.workers.length && yOffset < workerPanelHeight - 10; i++) {
+      const w = state.workers[i];
+      const isChopper = w.type === WorkerType.Chopper;
+      const typeName = isChopper ? 'C' : 'L';  // C = Chopper, L = coLLector
+      const staminaPercent = Math.round((w.stamina / w.maxStamina) * 100);
+
+      // Color based on stamina
+      if (staminaPercent > 50) {
+        ctx.fillStyle = '#5A9C5A';
+      } else if (staminaPercent > 25) {
+        ctx.fillStyle = '#AAAA5A';
+      } else {
+        ctx.fillStyle = '#AA5A5A';
+      }
+
+      ctx.fillText(`${typeName}${i + 1}: ${w.wood}w ${staminaPercent}%`, workerPanelX + 10, workerPanelY + yOffset);
+      yOffset += 18;
+    }
   }
 }
 

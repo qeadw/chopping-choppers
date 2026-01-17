@@ -34,6 +34,11 @@ interface DeadTreeData {
   respawnTimer: number;
 }
 
+interface WorkerSaveData {
+  type: 'chopper' | 'collector';
+  wood: number;
+}
+
 interface SaveData {
   money: number;
   upgrades: {
@@ -53,6 +58,7 @@ interface SaveData {
   chopperCount: number;
   collectorCount: number;
   deadTrees?: DeadTreeData[];
+  workers?: WorkerSaveData[];
 }
 
 export class GameEngine {
@@ -122,6 +128,7 @@ export class GameEngine {
       totalWoodChopped: 0,
       totalMoneyEarned: 0,
       workers: [],
+      showStumpTimers: true,
     };
 
     // Load saved progress
@@ -145,12 +152,14 @@ export class GameEngine {
     };
     window.addEventListener('keydown', this.upgradeKeyHandler);
 
-    // Setup hire worker key handler (J = Chopper, K = Collector)
+    // Setup hire worker key handler (J = Chopper, K = Collector, T = Toggle timers)
     this.hireKeyHandler = (e: KeyboardEvent) => {
       if (e.key.toLowerCase() === 'j') {
         this.hireWorker(WorkerType.Chopper);
       } else if (e.key.toLowerCase() === 'k') {
         this.hireWorker(WorkerType.Collector);
+      } else if (e.key.toLowerCase() === 't') {
+        this.state.showStumpTimers = !this.state.showStumpTimers;
       }
     };
     window.addEventListener('keydown', this.hireKeyHandler);
@@ -203,6 +212,12 @@ export class GameEngine {
         deadTrees.push({ id, respawnTimer });
       }
 
+      // Save worker data including their carried wood
+      const workers: WorkerSaveData[] = this.state.workers.map(w => ({
+        type: w.type === WorkerType.Chopper ? 'chopper' : 'collector',
+        wood: w.wood,
+      }));
+
       const saveData: SaveData = {
         money: this.state.money,
         upgrades: { ...this.state.upgrades },
@@ -212,6 +227,7 @@ export class GameEngine {
         chopperCount: this.state.workers.filter(w => w.type === WorkerType.Chopper).length,
         collectorCount: this.state.workers.filter(w => w.type === WorkerType.Collector).length,
         deadTrees,
+        workers,
       };
       localStorage.setItem(SAVE_KEY, JSON.stringify(saveData));
     } catch (e) {
@@ -248,12 +264,26 @@ export class GameEngine {
         this.applyDeadTreesToChunks();
       }
 
-      // Restore workers
-      for (let i = 0; i < (data.chopperCount || 0); i++) {
-        this.spawnWorkerSilent(WorkerType.Chopper);
-      }
-      for (let i = 0; i < (data.collectorCount || 0); i++) {
-        this.spawnWorkerSilent(WorkerType.Collector);
+      // Restore workers with their inventories
+      if (data.workers && data.workers.length > 0) {
+        // New save format with worker details
+        for (const workerData of data.workers) {
+          const type = workerData.type === 'chopper' ? WorkerType.Chopper : WorkerType.Collector;
+          this.spawnWorkerSilent(type);
+          // Set the wood amount on the last spawned worker
+          const lastWorker = this.state.workers[this.state.workers.length - 1];
+          if (lastWorker) {
+            lastWorker.wood = workerData.wood;
+          }
+        }
+      } else {
+        // Legacy save format (just counts)
+        for (let i = 0; i < (data.chopperCount || 0); i++) {
+          this.spawnWorkerSilent(WorkerType.Chopper);
+        }
+        for (let i = 0; i < (data.collectorCount || 0); i++) {
+          this.spawnWorkerSilent(WorkerType.Collector);
+        }
       }
 
       console.log('Progress loaded!');
@@ -955,8 +985,8 @@ export class GameEngine {
             worker.wood += canCarry;
             worker.targetDrop.amount -= canCarry;
             this.addFloatingText(worker.position.x, worker.position.y - 20, `+${canCarry}`, '#8B4513');
-            // Drain stamina when collecting
-            worker.stamina -= 3;
+            // Drain stamina based on amount collected
+            worker.stamina -= canCarry * 2;
 
             // Remove wood drop from array if fully collected
             if (worker.targetDrop.amount <= 0) {
