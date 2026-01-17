@@ -536,8 +536,12 @@ function drawUI(
 
   // Bottom-right: Worker stats panel
   if (state.workers.length > 0) {
-    const workerPanelWidth = 180;
-    const workerPanelHeight = Math.min(200, 30 + state.workers.length * 22);
+    // Get a sample worker of each type to show stats
+    const chopper = state.workers.find(w => w.type === WorkerType.Chopper);
+    const collector = state.workers.find(w => w.type === WorkerType.Collector);
+
+    const workerPanelWidth = 160;
+    const workerPanelHeight = 130;
     const workerPanelX = ctx.canvas.width - workerPanelWidth - padding;
     const workerPanelY = ctx.canvas.height - workerPanelHeight - padding - 40;
 
@@ -547,29 +551,32 @@ function drawUI(
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 12px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('WORKERS', workerPanelX + workerPanelWidth / 2, workerPanelY + 16);
+    ctx.fillText('WORKER STATS', workerPanelX + workerPanelWidth / 2, workerPanelY + 16);
 
     ctx.font = '10px monospace';
     ctx.textAlign = 'left';
 
-    let yOffset = 32;
-    for (let i = 0; i < state.workers.length && yOffset < workerPanelHeight - 10; i++) {
-      const w = state.workers[i];
-      const isChopper = w.type === WorkerType.Chopper;
-      const typeName = isChopper ? 'C' : 'L';  // C = Chopper, L = coLLector
-      const staminaPercent = Math.round((w.stamina / w.maxStamina) * 100);
+    let yOffset = 34;
 
-      // Color based on stamina
-      if (staminaPercent > 50) {
-        ctx.fillStyle = '#5A9C5A';
-      } else if (staminaPercent > 25) {
-        ctx.fillStyle = '#AAAA5A';
-      } else {
-        ctx.fillStyle = '#AA5A5A';
-      }
-
-      ctx.fillText(`${typeName}${i + 1}: ${w.wood}w ${staminaPercent}%`, workerPanelX + 10, workerPanelY + yOffset);
+    if (chopper) {
+      ctx.fillStyle = '#5A9C5A';
+      ctx.fillText('CHOPPERS:', workerPanelX + 10, workerPanelY + yOffset);
+      yOffset += 14;
+      ctx.fillStyle = '#aaa';
+      ctx.fillText(`  Dmg: ${chopper.chopPower.toFixed(2)}  Spd: ${chopper.speed}`, workerPanelX + 10, workerPanelY + yOffset);
+      yOffset += 12;
+      ctx.fillText(`  Rest: ${chopper.baseRestTime}s  Cap: ${chopper.carryCapacity}`, workerPanelX + 10, workerPanelY + yOffset);
       yOffset += 18;
+    }
+
+    if (collector) {
+      ctx.fillStyle = '#88AAFF';
+      ctx.fillText('COLLECTORS:', workerPanelX + 10, workerPanelY + yOffset);
+      yOffset += 14;
+      ctx.fillStyle = '#aaa';
+      ctx.fillText(`  Spd: ${collector.speed}  Cap: ${collector.carryCapacity}`, workerPanelX + 10, workerPanelY + yOffset);
+      yOffset += 12;
+      ctx.fillText(`  Rest: ${collector.baseRestTime}s`, workerPanelX + 10, workerPanelY + yOffset);
     }
   }
 }
