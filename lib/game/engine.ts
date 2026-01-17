@@ -29,6 +29,11 @@ let workerIdCounter = 0;
 const SAVE_KEY = 'chopping_choppers_save';
 const SAVE_INTERVAL = 5000; // Save every 5 seconds
 
+interface DeadTreeData {
+  id: string;
+  respawnTimer: number;
+}
+
 interface SaveData {
   money: number;
   upgrades: {
@@ -47,6 +52,7 @@ interface SaveData {
   totalMoneyEarned: number;
   chopperCount: number;
   collectorCount: number;
+  deadTrees?: DeadTreeData[];
 }
 
 export class GameEngine {
@@ -64,6 +70,7 @@ export class GameEngine {
   private wheelHandler: (e: WheelEvent) => void;
   private beforeUnloadHandler: () => void;
   private saveIntervalId: number = 0;
+  private deadTreesMap: Map<string, number> = new Map(); // tree ID -> respawn timer
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -190,6 +197,12 @@ export class GameEngine {
 
   private saveProgress(): void {
     try {
+      // Convert deadTreesMap to array for saving
+      const deadTrees: DeadTreeData[] = [];
+      for (const [id, respawnTimer] of this.deadTreesMap) {
+        deadTrees.push({ id, respawnTimer });
+      }
+
       const saveData: SaveData = {
         money: this.state.money,
         upgrades: { ...this.state.upgrades },
@@ -198,6 +211,7 @@ export class GameEngine {
         totalMoneyEarned: this.state.totalMoneyEarned,
         chopperCount: this.state.workers.filter(w => w.type === WorkerType.Chopper).length,
         collectorCount: this.state.workers.filter(w => w.type === WorkerType.Collector).length,
+        deadTrees,
       };
       localStorage.setItem(SAVE_KEY, JSON.stringify(saveData));
     } catch (e) {
@@ -225,6 +239,15 @@ export class GameEngine {
         this.state.workerUpgrades = { ...this.state.workerUpgrades, ...data.workerUpgrades };
       }
 
+      // Restore dead trees map
+      if (data.deadTrees) {
+        for (const deadTree of data.deadTrees) {
+          this.deadTreesMap.set(deadTree.id, deadTree.respawnTimer);
+        }
+        // Apply to currently loaded chunks
+        this.applyDeadTreesToChunks();
+      }
+
       // Restore workers
       for (let i = 0; i < (data.chopperCount || 0); i++) {
         this.spawnWorkerSilent(WorkerType.Chopper);
@@ -236,6 +259,34 @@ export class GameEngine {
       console.log('Progress loaded!');
     } catch (e) {
       console.warn('Failed to load progress:', e);
+    }
+  }
+
+  private applyDeadTreesToChunks(): void {
+    for (const chunk of this.state.chunks.values()) {
+      for (const tree of chunk.trees) {
+        const respawnTimer = this.deadTreesMap.get(tree.id);
+        if (respawnTimer !== undefined && !tree.isDead) {
+          tree.isDead = true;
+          tree.health = 0;
+          tree.respawnTimer = respawnTimer;
+        }
+      }
+    }
+  }
+
+  private syncDeadTreesMap(): void {
+    // Update map with current dead tree states and remove respawned trees
+    for (const chunk of this.state.chunks.values()) {
+      for (const tree of chunk.trees) {
+        if (tree.isDead) {
+          // Update respawn timer in map
+          this.deadTreesMap.set(tree.id, tree.respawnTimer);
+        } else if (this.deadTreesMap.has(tree.id)) {
+          // Tree has respawned, remove from map
+          this.deadTreesMap.delete(tree.id);
+        }
+      }
     }
   }
 
@@ -302,8 +353,14 @@ export class GameEngine {
     // Update chunks (generate new ones, remove distant ones)
     updateChunks(this.state.chunks, this.state.camera, this.config);
 
+    // Apply saved dead tree state to newly generated chunks
+    this.applyDeadTreesToChunks();
+
     // Update tree respawn timers
     updateTrees(this.state.chunks, deltaTime, this.config);
+
+    // Sync deadTreesMap with actual tree state (handle respawns)
+    this.syncDeadTreesMap();
 
     // Handle chopping
     if (this.state.input.chop && !this.pendingChop) {
