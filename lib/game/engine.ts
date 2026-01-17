@@ -62,6 +62,7 @@ export class GameEngine {
   private upgradeKeyHandler: (e: KeyboardEvent) => void;
   private hireKeyHandler: (e: KeyboardEvent) => void;
   private wheelHandler: (e: WheelEvent) => void;
+  private beforeUnloadHandler: () => void;
   private saveIntervalId: number = 0;
 
   constructor(canvas: HTMLCanvasElement) {
@@ -125,6 +126,10 @@ export class GameEngine {
     // Setup auto-save
     this.saveIntervalId = window.setInterval(() => this.saveProgress(), SAVE_INTERVAL);
 
+    // Save on page close/refresh
+    this.beforeUnloadHandler = () => this.saveProgress();
+    window.addEventListener('beforeunload', this.beforeUnloadHandler);
+
     // Setup upgrade key handler
     this.upgradeKeyHandler = (e: KeyboardEvent) => {
       if (e.key >= '1' && e.key <= '8') {
@@ -179,6 +184,7 @@ export class GameEngine {
     this.cleanupInput();
     window.removeEventListener('keydown', this.upgradeKeyHandler);
     window.removeEventListener('keydown', this.hireKeyHandler);
+    window.removeEventListener('beforeunload', this.beforeUnloadHandler);
     this.canvas.removeEventListener('wheel', this.wheelHandler);
   }
 
