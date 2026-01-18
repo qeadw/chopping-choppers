@@ -82,6 +82,7 @@ interface SaveData {
   choppersEnabled?: boolean;
   collectorsEnabled?: boolean;
   waypoints?: { x: number; y: number; type: string }[];
+  playerWaypoint?: { x: number; y: number } | null;
 }
 
 export class GameEngine {
