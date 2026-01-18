@@ -498,22 +498,23 @@ function drawUI(
     { key: '8', name: 'Worker Pwr', level: state.workerUpgrades.workerPower, costs: WORKER_UPGRADE_COSTS.workerPower, isWorker: true },
   ];
 
+  // Calculate upgrade cost (doubles after array ends)
+  const getUpgradeCost = (costs: number[], levelIndex: number) => {
+    if (levelIndex < costs.length) return costs[levelIndex];
+    const lastCost = costs[costs.length - 1];
+    return lastCost * Math.pow(2, levelIndex - costs.length + 1);
+  };
+
   upgrades.forEach((upg, i) => {
     const y = padding + 35 + i * 26;
     const levelIndex = upg.level - 1;
-    const nextCost = upg.costs[levelIndex];
-    const maxed = nextCost === undefined;
+    const nextCost = getUpgradeCost(upg.costs, levelIndex);
 
     ctx.fillStyle = (upg as { isWorker?: boolean }).isWorker ? '#88AAFF' : '#fff';
     ctx.fillText(`[${upg.key}] ${upg.name}`, upgradeX + 10, y);
 
-    if (maxed) {
-      ctx.fillStyle = '#4a4';
-      ctx.fillText('MAX', upgradeX + upgradeWidth - 45, y);
-    } else {
-      ctx.fillStyle = state.money >= nextCost ? '#4f4' : '#f44';
-      ctx.fillText(`$${nextCost}`, upgradeX + upgradeWidth - 55, y);
-    }
+    ctx.fillStyle = state.money >= nextCost ? '#4f4' : '#f44';
+    ctx.fillText(`$${nextCost}`, upgradeX + upgradeWidth - 55, y);
 
     // Level indicator
     ctx.fillStyle = '#888';

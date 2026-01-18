@@ -696,8 +696,14 @@ export class GameEngine {
         return;
     }
 
-    const cost = costs[levelIndex];
-    if (cost === undefined) return; // Already maxed
+    // Calculate cost (doubles after array ends)
+    let cost: number;
+    if (levelIndex < costs.length) {
+      cost = costs[levelIndex];
+    } else {
+      const lastCost = costs[costs.length - 1];
+      cost = lastCost * Math.pow(2, levelIndex - costs.length + 1);
+    }
 
     if (this.state.money >= cost) {
       this.state.money -= cost;
