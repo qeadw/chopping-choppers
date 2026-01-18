@@ -581,7 +581,7 @@ function drawUI(
     if (collector) {
       const effSpeed = Math.round(collector.speed * Math.pow(1.2, workerUpgrades.workerSpeed - 1));
       const effRest = (collector.baseRestTime / Math.pow(1.2, workerUpgrades.restSpeed - 1)).toFixed(1);
-      const effCap = Math.floor(collector.carryCapacity * Math.pow(1.2, effectivePower - 1));
+      const effCap = Math.floor(collector.carryCapacity * Math.pow(1.8, effectivePower - 1));
 
       ctx.fillStyle = '#88AAFF';
       ctx.fillText('COLLECTORS:', workerPanelX + 10, workerPanelY + yOffset);

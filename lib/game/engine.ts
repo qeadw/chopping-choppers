@@ -903,7 +903,7 @@ export class GameEngine {
             }
           } else if (isCollector) {
             // Collectors only look for wood drops to collect
-            const collectorCapacity = Math.floor(worker.carryCapacity * Math.pow(1.2, effectivePower - 1));
+            const collectorCapacity = Math.floor(worker.carryCapacity * Math.pow(1.8, effectivePower - 1));
             if (worker.wood < collectorCapacity) {
               const nearbyDrop = this.findNearestWoodDrop(worker.position.x, worker.position.y, 400);
               if (nearbyDrop) {
@@ -1052,7 +1052,7 @@ export class GameEngine {
           }
 
           // Pick up wood - power upgrade increases carry capacity by 20% per level
-          const effectiveCapacity = Math.floor(worker.carryCapacity * Math.pow(1.2, effectivePower - 1));
+          const effectiveCapacity = Math.floor(worker.carryCapacity * Math.pow(1.8, effectivePower - 1));
           const canCarry = Math.max(0, Math.min(worker.targetDrop.amount, effectiveCapacity - worker.wood));
           if (canCarry > 0) {
             worker.wood = Math.min(worker.wood + canCarry, effectiveCapacity); // Cap at max
