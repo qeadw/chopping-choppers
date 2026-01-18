@@ -93,8 +93,11 @@ export class GameEngine {
   private wheelHandler: (e: WheelEvent) => void;
   private clickHandler: (e: MouseEvent) => void;
   private beforeUnloadHandler: () => void;
+  private visibilityHandler: () => void;
   private saveIntervalId: number = 0;
   private deadTreesMap: Map<string, number> = new Map(); // tree ID -> respawn timer
+  private tabAwayTime: number = 0; // Timestamp when user tabbed away
+  private catchUpTimeRemaining: number = 0; // Time left to simulate at accelerated rate
 
   // Generate a unique world seed using crypto API for better randomness
   private generateWorldSeed(): number {
@@ -244,6 +247,34 @@ export class GameEngine {
       this.toggleChunkChallenge(chunkX, chunkY);
     };
     this.canvas.addEventListener('click', this.clickHandler);
+
+    // Setup visibility change handler for offline progress
+    this.visibilityHandler = () => {
+      if (document.hidden) {
+        // User tabbed away - record the time
+        this.tabAwayTime = Date.now();
+        this.saveProgress(); // Save before leaving
+      } else if (this.tabAwayTime > 0) {
+        // User came back - calculate elapsed time
+        const elapsedMs = Date.now() - this.tabAwayTime;
+        const elapsedSeconds = elapsedMs / 1000;
+        this.tabAwayTime = 0;
+
+        // Cap at 30 minutes of catch-up time
+        const maxCatchUp = 30 * 60;
+        this.catchUpTimeRemaining = Math.min(elapsedSeconds, maxCatchUp);
+
+        if (this.catchUpTimeRemaining > 1) {
+          this.addFloatingText(
+            this.state.player.position.x,
+            this.state.player.position.y - 40,
+            `Catching up ${Math.floor(this.catchUpTimeRemaining)}s...`,
+            '#88FFFF'
+          );
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', this.visibilityHandler);
   }
 
   start(): void {
@@ -265,6 +296,7 @@ export class GameEngine {
     window.removeEventListener('keydown', this.upgradeKeyHandler);
     window.removeEventListener('keydown', this.hireKeyHandler);
     window.removeEventListener('beforeunload', this.beforeUnloadHandler);
+    document.removeEventListener('visibilitychange', this.visibilityHandler);
     this.canvas.removeEventListener('wheel', this.wheelHandler);
     this.canvas.removeEventListener('click', this.clickHandler);
   }
@@ -542,6 +574,44 @@ export class GameEngine {
   private gameLoop = (currentTime: number): void => {
     const deltaTime = Math.min((currentTime - this.lastTime) / 1000, 0.1);
     this.lastTime = currentTime;
+
+    // Handle catch-up mode (accelerated simulation when returning from tab away)
+    if (this.catchUpTimeRemaining > 0) {
+      // Simulate at 20x speed, up to 1 second of game time per frame
+      const catchUpSpeed = 20;
+      const maxCatchUpPerFrame = 1.0;
+      const catchUpThisFrame = Math.min(this.catchUpTimeRemaining, maxCatchUpPerFrame);
+
+      // Run multiple smaller updates for stability
+      const tickSize = 0.05; // 50ms ticks
+      let remaining = catchUpThisFrame;
+      while (remaining > 0) {
+        const tick = Math.min(remaining, tickSize);
+        this.updateWorkers(tick); // Only update workers during catch-up
+        this.updateWoodDrops(tick);
+        updateTrees(this.state.chunks, tick, this.config);
+        this.applyChallengeHealthToRespawnedTrees();
+
+        // Update cooldowns
+        for (const [key, time] of this.state.chunkToggleCooldowns) {
+          const newTime = time - tick;
+          if (newTime <= 0) {
+            this.state.chunkToggleCooldowns.delete(key);
+          } else {
+            this.state.chunkToggleCooldowns.set(key, newTime);
+          }
+        }
+
+        remaining -= tick;
+      }
+
+      this.catchUpTimeRemaining -= catchUpThisFrame;
+
+      // Show progress
+      if (this.catchUpTimeRemaining > 0 && Math.floor(this.catchUpTimeRemaining) % 5 === 0) {
+        // Update floating text periodically
+      }
+    }
 
     this.update(deltaTime);
     this.render();
@@ -1641,7 +1711,12 @@ export class GameEngine {
     return this.state;
   }
 
+  // Get catch-up time remaining for UI display
+  public getCatchUpTime(): number {
+    return this.catchUpTimeRemaining;
+  }
+
   private render(): void {
-    render(this.ctx, this.state, this.sprites, this.config);
+    render(this.ctx, this.state, this.sprites, this.config, this.catchUpTimeRemaining);
   }
 }

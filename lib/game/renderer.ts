@@ -9,7 +9,8 @@ export function render(
   ctx: CanvasRenderingContext2D,
   state: GameState,
   sprites: SpriteSheet,
-  config: GameConfig
+  config: GameConfig,
+  catchUpTime: number = 0
 ): void {
   const { camera, player, chunks } = state;
   const baseScale = config.pixelScale;
@@ -110,6 +111,11 @@ export function render(
 
   // Draw UI (always at normal scale)
   drawUI(ctx, state, sprites, config);
+
+  // Draw catch-up indicator if active
+  if (catchUpTime > 0) {
+    drawCatchUpIndicator(ctx, catchUpTime);
+  }
 }
 
 function drawGround(
@@ -783,4 +789,48 @@ function drawChunkOverlay(
     ctx.textAlign = 'center';
     ctx.fillText('Click completed chunks for CHALLENGE (Gold: 2x | Platinum: 4x)', ctx.canvas.width / 2, ctx.canvas.height - 43);
   }
+}
+
+function drawCatchUpIndicator(
+  ctx: CanvasRenderingContext2D,
+  catchUpTime: number
+): void {
+  const centerX = ctx.canvas.width / 2;
+  const centerY = ctx.canvas.height / 2;
+
+  // Semi-transparent overlay
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+  ctx.fillRect(centerX - 150, centerY - 40, 300, 80);
+
+  // Border
+  ctx.strokeStyle = '#88FFFF';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(centerX - 150, centerY - 40, 300, 80);
+
+  // Title
+  ctx.fillStyle = '#88FFFF';
+  ctx.font = 'bold 18px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('CATCHING UP...', centerX, centerY - 10);
+
+  // Time remaining
+  ctx.fillStyle = '#FFFFFF';
+  ctx.font = '14px monospace';
+  const mins = Math.floor(catchUpTime / 60);
+  const secs = Math.floor(catchUpTime % 60);
+  ctx.fillText(`${mins}:${secs.toString().padStart(2, '0')} remaining`, centerX, centerY + 15);
+
+  // Progress bar
+  const barWidth = 260;
+  const barHeight = 8;
+  const barX = centerX - barWidth / 2;
+  const barY = centerY + 25;
+
+  ctx.fillStyle = '#333';
+  ctx.fillRect(barX, barY, barWidth, barHeight);
+
+  // Animated progress (pulse effect)
+  const pulse = Math.sin(Date.now() / 200) * 0.2 + 0.8;
+  ctx.fillStyle = `rgba(136, 255, 255, ${pulse})`;
+  ctx.fillRect(barX, barY, barWidth * pulse, barHeight);
 }
