@@ -492,12 +492,7 @@ function drawUI(
 
   upgrades.forEach((upg, i) => {
     const y = padding + 35 + i * 26;
-    let levelIndex: number;
-    if (upg.name === 'Carry Cap') {
-      levelIndex = Math.floor((upg.level - 20) / 10);
-    } else {
-      levelIndex = upg.level - 1;
-    }
+    const levelIndex = upg.level - 1;
     const nextCost = upg.costs[levelIndex];
     const maxed = nextCost === undefined;
 
@@ -514,7 +509,7 @@ function drawUI(
 
     // Level indicator
     ctx.fillStyle = '#888';
-    ctx.fillText(`Lv${upg.name === 'Carry Cap' ? levelIndex + 1 : upg.level}`, upgradeX + 130, y);
+    ctx.fillText(`Lv${upg.level}`, upgradeX + 130, y);
   });
 
   // Bottom: Controls hint
