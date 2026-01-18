@@ -259,10 +259,10 @@ function drawWorker(
 
   ctx.restore();
 
-  // Draw wood count above worker if carrying
+  // Draw wood count above worker if carrying (above stamina bar)
   if (worker.wood > 0) {
     const textX = (worker.position.x - camera.x) * scale;
-    const textY = (worker.position.y - camera.y - 15) * scale;
+    const textY = (worker.position.y - camera.y - 24) * scale;
     ctx.fillStyle = '#8B4513';
     ctx.font = `bold ${8 * scale}px monospace`;
     ctx.textAlign = 'center';
