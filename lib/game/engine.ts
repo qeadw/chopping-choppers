@@ -477,15 +477,18 @@ export class GameEngine {
     }
   }
 
-  // Apply 2x health to trees that just respawned in challenge chunks
+  // Apply challenge health multiplier to trees that just respawned in challenge chunks
   private applyChallengeHealthToRespawnedTrees(): void {
     for (const [key, chunk] of this.state.chunks) {
       if (!this.state.challengeChunks.has(key)) continue;
 
+      // Platinum chunks get 4x health, gold chunks get 2x
+      const multiplier = this.state.platinumChunks.has(key) ? 4 : 2;
+
       for (const tree of chunk.trees) {
-        // If tree is alive and has exactly maxHealth, it just respawned - give it 2x
+        // If tree is alive and has exactly maxHealth, it just respawned - apply multiplier
         if (!tree.isDead && tree.health === tree.maxHealth) {
-          tree.health = tree.maxHealth * 2;
+          tree.health = tree.maxHealth * multiplier;
         }
       }
     }
@@ -632,9 +635,10 @@ export class GameEngine {
     this.spawnWoodParticles(nearestTree.x, nearestTree.y - 20);
 
     if (wasDestroyed) {
-      // Tree was chopped down - spawn wood drop (2x in challenge chunks)
+      // Tree was chopped down - spawn wood drop (2x gold challenge, 4x platinum challenge)
       const baseWood = TREE_STATS[nearestTree.type].woodDrop;
-      const woodAmount = this.isTreeInChallengeChunk(nearestTree.x, nearestTree.y) ? baseWood * 2 : baseWood;
+      const multiplier = this.getChallengeMultiplier(nearestTree.x, nearestTree.y);
+      const woodAmount = baseWood * multiplier;
       this.spawnWoodDrop(nearestTree.x, nearestTree.y, woodAmount);
       this.state.totalWoodChopped += woodAmount;
 
@@ -1151,9 +1155,10 @@ export class GameEngine {
             this.spawnWoodParticles(worker.targetTree.x, worker.targetTree.y - 20);
 
             if (wasDestroyed) {
-              // 2x drops in challenge chunks
+              // 2x drops in gold challenge, 4x in platinum challenge
               const baseWood = TREE_STATS[worker.targetTree.type].woodDrop;
-              const woodAmount = this.isTreeInChallengeChunk(worker.targetTree.x, worker.targetTree.y) ? baseWood * 2 : baseWood;
+              const multiplier = this.getChallengeMultiplier(worker.targetTree.x, worker.targetTree.y);
+              const woodAmount = baseWood * multiplier;
               this.spawnWoodDrop(worker.targetTree.x, worker.targetTree.y, woodAmount);
               this.state.totalWoodChopped += woodAmount;
               this.spawnTreeFallParticles(worker.targetTree.x, worker.targetTree.y);
@@ -1578,11 +1583,13 @@ export class GameEngine {
 
     // Respawn all trees in this chunk with appropriate health
     const isChallenge = this.state.challengeChunks.has(key);
+    const isPlatinum = this.state.platinumChunks.has(key);
+    // Platinum gets 4x health, gold gets 2x health
+    const healthMultiplier = isChallenge ? (isPlatinum ? 4 : 2) : 1;
     for (const tree of chunk.trees) {
       tree.isDead = false;
       tree.respawnTimer = 0;
-      // Double health in challenge mode
-      tree.health = isChallenge ? tree.maxHealth * 2 : tree.maxHealth;
+      tree.health = tree.maxHealth * healthMultiplier;
       // Also remove from dead trees map so save/load works correctly
       this.deadTreesMap.delete(tree.id);
     }
@@ -1593,12 +1600,14 @@ export class GameEngine {
     return true;
   }
 
-  // Check if a tree is in a challenge chunk (for 2x drops)
-  public isTreeInChallengeChunk(treeX: number, treeY: number): boolean {
+  // Check if a tree is in a challenge chunk and return multiplier (0 = not challenge, 2 = gold, 4 = platinum)
+  public getChallengeMultiplier(treeX: number, treeY: number): number {
     const chunkX = Math.floor(treeX / this.config.chunkSize);
     const chunkY = Math.floor(treeY / this.config.chunkSize);
     const key = `${chunkX},${chunkY}`;
-    return this.state.challengeChunks.has(key);
+    if (!this.state.challengeChunks.has(key)) return 1;
+    // Platinum chunks get 4x, gold chunks get 2x
+    return this.state.platinumChunks.has(key) ? 4 : 2;
   }
 
   // Load 3x3 chunks around each worker so they can always find trees/drops

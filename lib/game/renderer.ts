@@ -156,9 +156,14 @@ function drawTree(
     sprite.height * scale
   );
 
-  // Draw health bar if tree is damaged (health < maxHealth or < 2x maxHealth for challenge)
-  // For challenge chunks, trees have 2x maxHealth so we show health / (maxHealth * 2)
-  const effectiveMaxHealth = tree.health > tree.maxHealth ? tree.maxHealth * 2 : tree.maxHealth;
+  // Draw health bar if tree is damaged (health < maxHealth, 2x, or 4x for challenge)
+  // Determine effective max based on current health (could be 1x, 2x, or 4x)
+  let effectiveMaxHealth = tree.maxHealth;
+  if (tree.health > tree.maxHealth * 2) {
+    effectiveMaxHealth = tree.maxHealth * 4;  // Platinum challenge
+  } else if (tree.health > tree.maxHealth) {
+    effectiveMaxHealth = tree.maxHealth * 2;  // Gold challenge
+  }
   if (!tree.isDead && tree.health < effectiveMaxHealth) {
     const barWidth = 20 * scale;
     const barHeight = 3 * scale;
@@ -171,9 +176,12 @@ function drawTree(
 
     // Health - use effective max for percentage
     const healthPercent = tree.health / effectiveMaxHealth;
-    // Orange bar for challenge trees (2x health), green/yellow/red for normal
-    const isChallenge = effectiveMaxHealth > tree.maxHealth;
-    if (isChallenge) {
+    // Platinum (4x) = white/silver, Gold (2x) = orange, normal = green
+    const isPlatinumChallenge = effectiveMaxHealth > tree.maxHealth * 2;
+    const isGoldChallenge = effectiveMaxHealth > tree.maxHealth && !isPlatinumChallenge;
+    if (isPlatinumChallenge) {
+      ctx.fillStyle = healthPercent > 0.5 ? '#E5E4E2' : healthPercent > 0.25 ? '#C0C0C0' : '#f44';
+    } else if (isGoldChallenge) {
       ctx.fillStyle = healthPercent > 0.5 ? '#f80' : healthPercent > 0.25 ? '#fa0' : '#f44';
     } else {
       ctx.fillStyle = healthPercent > 0.5 ? '#4a4' : healthPercent > 0.25 ? '#aa4' : '#a44';
@@ -725,12 +733,12 @@ function drawChunkOverlay(
           screenY + screenH / 2 + 4
         );
 
-        // Show challenge indicator if active
+        // Show challenge indicator if active (4X for platinum, 2X for gold)
         if (isChallenge) {
-          ctx.fillStyle = '#FF6600';
+          ctx.fillStyle = isPlatinum ? '#E5E4E2' : '#FF6600';
           ctx.font = `bold ${Math.max(8, 10 * scale / 3)}px monospace`;
           ctx.fillText(
-            '2X',
+            isPlatinum ? '4X' : '2X',
             screenX + screenW / 2,
             screenY + screenH / 2 - 12
           );
@@ -773,6 +781,6 @@ function drawChunkOverlay(
     ctx.fillStyle = '#FFD700';
     ctx.font = 'bold 12px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('Click completed chunks to toggle CHALLENGE mode (2x HP, 2x drops)', ctx.canvas.width / 2, ctx.canvas.height - 43);
+    ctx.fillText('Click completed chunks for CHALLENGE (Gold: 2x | Platinum: 4x)', ctx.canvas.width / 2, ctx.canvas.height - 43);
   }
 }
