@@ -177,14 +177,10 @@ export class GameEngine {
     };
     window.addEventListener('keydown', this.upgradeKeyHandler);
 
-    // Setup hire worker key handler (J = Chopper, K = Collector, T = Toggle timers, G = Reset save)
+    // Setup hire worker key handler (J = Chopper, K = Collector, T = Toggle timers)
     this.hireKeyHandler = (e: KeyboardEvent) => {
       if (e.key.toLowerCase() === 'j') {
         this.hireWorker(WorkerType.Chopper);
-      } else if (e.key.toLowerCase() === 'g') {
-        // Reset all progress
-        localStorage.removeItem(SAVE_KEY);
-        location.reload();
       } else if (e.key.toLowerCase() === 'k') {
         this.hireWorker(WorkerType.Collector);
       } else if (e.key.toLowerCase() === 't') {
