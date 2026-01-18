@@ -1221,11 +1221,11 @@ export class GameEngine {
       for (const tree of chunk.trees) {
         if (tree.isDead) continue;
 
-        // Check if another worker is already targeting this tree
-        const alreadyTargeted = this.state.workers.some(
+        // Allow up to 2 choppers per tree
+        const targetingCount = this.state.workers.filter(
           w => w !== worker && w.targetTree === tree
-        );
-        if (alreadyTargeted) continue;
+        ).length;
+        if (targetingCount >= 2) continue;
 
         const dx = tree.x - worker.position.x;
         const dy = tree.y - worker.position.y;
@@ -1277,9 +1277,9 @@ export class GameEngine {
     for (const drop of this.state.woodDrops) {
       if (drop.amount <= 0) continue;
 
-      // Check if a worker is already collecting this
-      const alreadyTargeted = this.state.workers.some(w => w.targetDrop === drop);
-      if (alreadyTargeted) continue;
+      // Allow up to 2 collectors per wood drop
+      const targetingCount = this.state.workers.filter(w => w.targetDrop === drop).length;
+      if (targetingCount >= 2) continue;
 
       const dx = drop.x - x;
       const dy = drop.y - y;
@@ -1294,7 +1294,7 @@ export class GameEngine {
     return nearest;
   }
 
-  // Find closest wood drop, including current target but excluding other workers' targets
+  // Find closest wood drop, including current target but allowing up to 2 collectors per drop
   private findClosestWoodDrop(x: number, y: number, maxRange: number, currentTarget: WoodDrop | null): WoodDrop | null {
     let nearest: WoodDrop | null = null;
     let nearestDist = maxRange;
@@ -1302,10 +1302,10 @@ export class GameEngine {
     for (const drop of this.state.woodDrops) {
       if (drop.amount <= 0) continue;
 
-      // Allow current target, but skip drops targeted by other workers
+      // Allow current target, but limit other drops to 2 collectors max
       if (drop !== currentTarget) {
-        const alreadyTargeted = this.state.workers.some(w => w.targetDrop === drop);
-        if (alreadyTargeted) continue;
+        const targetingCount = this.state.workers.filter(w => w.targetDrop === drop).length;
+        if (targetingCount >= 2) continue;
       }
 
       const dx = drop.x - x;
