@@ -336,8 +336,8 @@ export class GameEngine {
         const elapsedSeconds = elapsedMs / 1000;
         this.tabAwayTime = 0;
 
-        // Cap at 30 minutes of catch-up time
-        const maxCatchUp = 30 * 60;
+        // Cap at 1 hour of catch-up time
+        const maxCatchUp = 60 * 60;
         this.catchUpTimeRemaining = Math.min(elapsedSeconds, maxCatchUp);
 
         if (this.catchUpTimeRemaining > 1) {
@@ -732,6 +732,9 @@ export class GameEngine {
     // Update camera to follow player
     updateCamera(this.state.camera, this.state.player);
 
+    // Sync deadTreesMap BEFORE chunks are deleted (save current dead tree state)
+    this.syncDeadTreesMap();
+
     // Update chunks (generate new ones, remove distant ones)
     updateChunks(this.state.chunks, this.state.camera, this.config, this.state.worldSeed);
 
@@ -747,7 +750,7 @@ export class GameEngine {
     // Ensure trees in challenge chunks have 2x health when they respawn
     this.applyChallengeHealthToRespawnedTrees();
 
-    // Sync deadTreesMap with actual tree state (handle respawns)
+    // Sync again after tree updates (handle respawns)
     this.syncDeadTreesMap();
 
     // Update chunk toggle cooldowns
@@ -1212,6 +1215,27 @@ export class GameEngine {
         worker.targetTree = null;
         worker.targetDrop = null;
         continue;
+      }
+
+      // Validate target tree still exists in loaded chunks (may have been unloaded)
+      if (worker.targetTree) {
+        let treeFound = false;
+        for (const chunk of this.state.chunks.values()) {
+          if (chunk.trees.includes(worker.targetTree)) {
+            treeFound = true;
+            break;
+          }
+        }
+        if (!treeFound) {
+          worker.targetTree = null;
+          worker.state = WorkerState.Idle;
+        }
+      }
+
+      // Validate target drop still exists
+      if (worker.targetDrop && !this.state.woodDrops.includes(worker.targetDrop)) {
+        worker.targetDrop = null;
+        worker.state = WorkerState.Idle;
       }
 
       switch (worker.state) {
@@ -1921,9 +1945,14 @@ export class GameEngine {
       this.loadChunksAround(worker.position.x, worker.position.y);
     }
 
-    // Load chunks around waypoints
+    // Load chunks around worker waypoints
     for (const waypoint of this.state.waypoints) {
       this.loadChunksAround(waypoint.x, waypoint.y);
+    }
+
+    // Load chunks around player waypoint
+    if (this.state.playerWaypoint) {
+      this.loadChunksAround(this.state.playerWaypoint.x, this.state.playerWaypoint.y);
     }
   }
 

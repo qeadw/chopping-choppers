@@ -58,7 +58,7 @@ function wouldOverlap(x: number, y: number, type: TreeType, existingTrees: Tree[
   return false;
 }
 
-let treeIdCounter = 0;
+// Tree IDs are now deterministic based on chunk and tree index within chunk
 
 export function generateChunk(chunkX: number, chunkY: number, config: GameConfig, worldSeed: number = 0): Chunk {
   const seed = hashCoords(chunkX, chunkY, worldSeed);
@@ -136,7 +136,7 @@ export function generateChunk(chunkX: number, chunkY: number, config: GameConfig
     const stats = TREE_STATS[type];
 
     trees.push({
-      id: `tree_${chunkX}_${chunkY}_${treeIdCounter++}`,
+      id: `tree_${chunkX}_${chunkY}_${trees.length}`,
       x,
       y,
       type,
