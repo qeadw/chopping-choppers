@@ -773,6 +773,6 @@ function drawChunkOverlay(
     ctx.fillStyle = '#FFD700';
     ctx.font = 'bold 12px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('Click gold/platinum chunks to toggle CHALLENGE mode (2x HP, 2x drops)', ctx.canvas.width / 2, ctx.canvas.height - 43);
+    ctx.fillText('Click completed chunks to toggle CHALLENGE mode (2x HP, 2x drops)', ctx.canvas.width / 2, ctx.canvas.height - 43);
   }
 }
