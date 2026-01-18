@@ -539,8 +539,12 @@ function drawUI(
     // Get a sample worker of each type to show stats
     const chopper = state.workers.find(w => w.type === WorkerType.Chopper);
     const collector = state.workers.find(w => w.type === WorkerType.Collector);
+    const { workerUpgrades } = state;
 
-    const workerPanelWidth = 160;
+    // Calculate effective stats with upgrades applied
+    const effectivePower = workerUpgrades.workerPower;
+
+    const workerPanelWidth = 170;
     const workerPanelHeight = 130;
     const workerPanelX = ctx.canvas.width - workerPanelWidth - padding;
     const workerPanelY = ctx.canvas.height - workerPanelHeight - padding - 40;
@@ -559,24 +563,33 @@ function drawUI(
     let yOffset = 34;
 
     if (chopper) {
+      const effSpeed = Math.round(chopper.speed * workerUpgrades.workerSpeed);
+      const effDamage = chopper.chopPower + effectivePower;
+      const effRest = (chopper.baseRestTime / workerUpgrades.restSpeed).toFixed(1);
+      const effCap = chopper.carryCapacity + effectivePower * 5;
+
       ctx.fillStyle = '#5A9C5A';
       ctx.fillText('CHOPPERS:', workerPanelX + 10, workerPanelY + yOffset);
       yOffset += 14;
       ctx.fillStyle = '#aaa';
-      ctx.fillText(`  Dmg: ${chopper.chopPower.toFixed(2)}  Spd: ${chopper.speed}`, workerPanelX + 10, workerPanelY + yOffset);
+      ctx.fillText(`  Dmg: ${effDamage.toFixed(2)}  Spd: ${effSpeed}`, workerPanelX + 10, workerPanelY + yOffset);
       yOffset += 12;
-      ctx.fillText(`  Rest: ${chopper.baseRestTime}s  Cap: ${chopper.carryCapacity}`, workerPanelX + 10, workerPanelY + yOffset);
+      ctx.fillText(`  Rest: ${effRest}s  Cap: ${effCap}`, workerPanelX + 10, workerPanelY + yOffset);
       yOffset += 18;
     }
 
     if (collector) {
+      const effSpeed = Math.round(collector.speed * workerUpgrades.workerSpeed);
+      const effRest = (collector.baseRestTime / workerUpgrades.restSpeed).toFixed(1);
+      const effCap = collector.carryCapacity + effectivePower * 5;
+
       ctx.fillStyle = '#88AAFF';
       ctx.fillText('COLLECTORS:', workerPanelX + 10, workerPanelY + yOffset);
       yOffset += 14;
       ctx.fillStyle = '#aaa';
-      ctx.fillText(`  Spd: ${collector.speed}  Cap: ${collector.carryCapacity}`, workerPanelX + 10, workerPanelY + yOffset);
+      ctx.fillText(`  Spd: ${effSpeed}  Cap: ${effCap}`, workerPanelX + 10, workerPanelY + yOffset);
       yOffset += 12;
-      ctx.fillText(`  Rest: ${collector.baseRestTime}s`, workerPanelX + 10, workerPanelY + yOffset);
+      ctx.fillText(`  Rest: ${effRest}s`, workerPanelX + 10, workerPanelY + yOffset);
     }
   }
 }
