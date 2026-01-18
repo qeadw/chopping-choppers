@@ -72,6 +72,7 @@ interface SaveData {
   workers?: WorkerSaveData[];
   worldSeed?: number;
   woodDrops?: WoodDropSaveData[];
+  clearedChunks?: string[];  // Chunks that were fully cleared at once
 }
 
 export class GameEngine {
@@ -154,6 +155,7 @@ export class GameEngine {
       workers: [],
       showStumpTimers: true,
       worldSeed: this.generateWorldSeed(),
+      clearedChunks: new Set<string>(),
     };
 
     // Load saved progress
@@ -267,6 +269,7 @@ export class GameEngine {
         workers,
         worldSeed: this.state.worldSeed,
         woodDrops,
+        clearedChunks: Array.from(this.state.clearedChunks),
       };
       localStorage.setItem(SAVE_KEY, JSON.stringify(saveData));
     } catch (e) {
@@ -375,6 +378,11 @@ export class GameEngine {
         for (let i = 0; i < (data.collectorCount || 0); i++) {
           this.spawnWorkerSilent(WorkerType.Collector);
         }
+      }
+
+      // Restore cleared chunks (gold bordered)
+      if (data.clearedChunks && data.clearedChunks.length > 0) {
+        this.state.clearedChunks = new Set(data.clearedChunks);
       }
 
       console.log('Progress loaded!');
@@ -541,6 +549,9 @@ export class GameEngine {
 
       // Show floating text
       this.addFloatingText(nearestTree.x, nearestTree.y - 30, `+${woodAmount}`, '#8B4513');
+
+      // Check if chunk is now fully cleared
+      this.checkChunkCleared(nearestTree.x, nearestTree.y);
     }
   }
 
@@ -586,12 +597,7 @@ export class GameEngine {
     for (let i = this.state.woodDrops.length - 1; i >= 0; i--) {
       const drop = this.state.woodDrops[i];
 
-      // Decrease lifetime
-      drop.lifetime -= deltaTime;
-      if (drop.lifetime <= 0) {
-        this.state.woodDrops.splice(i, 1);
-        continue;
-      }
+      // Wood never despawns - removed lifetime expiration
 
       // Check if player can pick up
       const dx = drop.x - player.position.x;
@@ -1029,6 +1035,8 @@ export class GameEngine {
               this.spawnWoodDrop(worker.targetTree.x, worker.targetTree.y, woodAmount);
               this.state.totalWoodChopped += woodAmount;
               this.spawnTreeFallParticles(worker.targetTree.x, worker.targetTree.y);
+              // Check if chunk is now fully cleared
+              this.checkChunkCleared(worker.targetTree.x, worker.targetTree.y);
               worker.treesChopped++;
               worker.targetTree = null;
               worker.state = WorkerState.Idle;  // Go find another tree
@@ -1342,6 +1350,29 @@ export class GameEngine {
     }
 
     return nearest;
+  }
+
+  // Check if a chunk is now fully cleared (all trees dead) and mark it as gold-bordered
+  private checkChunkCleared(treeX: number, treeY: number): void {
+    const chunkX = Math.floor(treeX / this.config.chunkSize);
+    const chunkY = Math.floor(treeY / this.config.chunkSize);
+    const key = `${chunkX},${chunkY}`;
+
+    // Don't check if already cleared
+    if (this.state.clearedChunks.has(key)) return;
+
+    const chunk = this.state.chunks.get(key);
+    if (!chunk) return;
+
+    // Check if ALL trees in this chunk are dead
+    const allDead = chunk.trees.every(tree => tree.isDead);
+    if (allDead) {
+      this.state.clearedChunks.add(key);
+      // Show celebratory text
+      const centerX = chunkX * this.config.chunkSize + this.config.chunkSize / 2;
+      const centerY = chunkY * this.config.chunkSize + this.config.chunkSize / 2;
+      this.addFloatingText(centerX, centerY, 'CHUNK CLEARED!', '#FFD700');
+    }
   }
 
   private render(): void {

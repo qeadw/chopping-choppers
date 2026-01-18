@@ -676,19 +676,36 @@ function drawChunkOverlay(
       ctx.fillStyle = color;
       ctx.fillRect(screenX, screenY, screenW, screenH);
 
-      // Draw chunk border
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-      ctx.lineWidth = 1;
+      // Check if this chunk has been fully cleared (gold bordered)
+      const isCleared = state.clearedChunks.has(key);
+
+      // Draw chunk border - gold if cleared, white otherwise
+      if (isCleared) {
+        ctx.strokeStyle = '#FFD700';
+        ctx.lineWidth = 3;
+      } else {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.lineWidth = 1;
+      }
       ctx.strokeRect(screenX, screenY, screenW, screenH);
 
-      // Draw tree count
+      // Draw tree count or cleared indicator
       if (chunk) {
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-        ctx.fillText(
-          `${treeCount}`,
-          screenX + screenW / 2,
-          screenY + screenH / 2 + 4
-        );
+        if (isCleared) {
+          ctx.fillStyle = '#FFD700';
+          ctx.fillText(
+            '★',
+            screenX + screenW / 2,
+            screenY + screenH / 2 + 4
+          );
+        } else {
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+          ctx.fillText(
+            `${treeCount}`,
+            screenX + screenW / 2,
+            screenY + screenH / 2 + 4
+          );
+        }
       }
     }
   }

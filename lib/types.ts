@@ -231,6 +231,7 @@ export interface GameState {
   workers: Worker[];
   showStumpTimers: boolean;
   worldSeed: number;
+  clearedChunks: Set<string>;  // Chunks that were fully cleared at once (gold bordered)
 }
 
 export interface SpriteSheet {
