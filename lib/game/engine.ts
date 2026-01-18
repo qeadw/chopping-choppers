@@ -297,12 +297,19 @@ export class GameEngine {
         this.state.upgrades = { ...this.state.upgrades, ...data.upgrades };
 
         // Migrate old carryCapacity format (stored as 20, 30, 40...) to new level format (1, 2, 3...)
-        if (this.state.upgrades.carryCapacity >= 10) {
+        const cap = this.state.upgrades.carryCapacity;
+        if (typeof cap === 'number' && cap >= 10) {
           // Old format: base 20, +10 per upgrade. Convert to level.
-          this.state.upgrades.carryCapacity = Math.floor((this.state.upgrades.carryCapacity - 10) / 10) + 1;
+          this.state.upgrades.carryCapacity = Math.floor((cap - 10) / 10) + 1;
         }
-        // Always ensure carryCapacity is valid (1-6)
-        this.state.upgrades.carryCapacity = Math.max(1, Math.min(6, this.state.upgrades.carryCapacity));
+        // Always ensure carryCapacity is valid (1-6), default to 1 if invalid
+        if (typeof this.state.upgrades.carryCapacity !== 'number' ||
+            isNaN(this.state.upgrades.carryCapacity) ||
+            this.state.upgrades.carryCapacity < 1) {
+          this.state.upgrades.carryCapacity = 1;
+        } else if (this.state.upgrades.carryCapacity > 6) {
+          this.state.upgrades.carryCapacity = 6;
+        }
       }
       if (data.workerUpgrades) {
         this.state.workerUpgrades = { ...this.state.workerUpgrades, ...data.workerUpgrades };
