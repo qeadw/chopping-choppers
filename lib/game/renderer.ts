@@ -440,9 +440,10 @@ function drawUI(
   ctx.font = 'bold 16px monospace';
   ctx.textAlign = 'left';
 
-  // Wood icon and count
+  // Wood icon and count (base 10, 50% compound per level)
+  const effectiveCarryCap = Math.floor(10 * Math.pow(1.5, state.upgrades.carryCapacity - 1));
   ctx.drawImage(sprites.wood, padding + 10, padding + 12, 24, 18);
-  ctx.fillText(`${state.wood} / ${state.upgrades.carryCapacity}`, padding + 45, padding + 28);
+  ctx.fillText(`${state.wood} / ${effectiveCarryCap}`, padding + 45, padding + 28);
 
   // Money
   ctx.fillStyle = '#FFD700';
@@ -527,7 +528,8 @@ function drawUI(
   ctx.fillText('WASD: Move | Click: Chop | E: Sell | J: Chopper | K: Collector | T: Timers | Scroll: Zoom', padding + 10, controlsY + 16);
 
   // Capacity warning
-  if (state.wood >= state.upgrades.carryCapacity) {
+  const playerCapacity = Math.floor(10 * Math.pow(1.5, state.upgrades.carryCapacity - 1));
+  if (state.wood >= playerCapacity) {
     ctx.fillStyle = 'rgba(255, 100, 100, 0.9)';
     ctx.font = 'bold 16px monospace';
     ctx.textAlign = 'center';

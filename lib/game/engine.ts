@@ -126,7 +126,7 @@ export class GameEngine {
         axePower: 1,
         moveSpeed: 1,
         chopSpeed: 1,
-        carryCapacity: 20,
+        carryCapacity: 1,  // Level-based, effective = 10 * 1.5^(level-1)
       },
       workerUpgrades: {
         restSpeed: 1,
@@ -500,8 +500,8 @@ export class GameEngine {
     // Start chop animation
     startChop(this.state.player, this.config, this.state.upgrades);
 
-    // Deal damage to tree
-    const damage = this.state.upgrades.axePower;
+    // Deal damage to tree (40% compound per level, base damage 1)
+    const damage = Math.pow(1.4, this.state.upgrades.axePower - 1);
     const wasDestroyed = damageTree(nearestTree, damage, this.config);
 
     // Spawn wood particles on hit
@@ -576,8 +576,9 @@ export class GameEngine {
       const dist = Math.sqrt(dx * dx + dy * dy);
 
       if (dist < this.config.woodPickupRange) {
-        // Check capacity
-        const canCarry = Math.min(drop.amount, upgrades.carryCapacity - this.state.wood);
+        // Check capacity (base 10, 50% compound per level)
+        const effectiveCapacity = Math.floor(10 * Math.pow(1.5, upgrades.carryCapacity - 1));
+        const canCarry = Math.min(drop.amount, effectiveCapacity - this.state.wood);
         if (canCarry > 0) {
           this.state.wood += canCarry;
           drop.amount -= canCarry;
@@ -649,7 +650,7 @@ export class GameEngine {
         break;
       case 4:
         costs = UPGRADE_COSTS.carryCapacity;
-        levelIndex = Math.floor((upgrades.carryCapacity - 20) / 10);
+        levelIndex = upgrades.carryCapacity - 1;
         upgradeName = 'carryCapacity';
         break;
       case 5:
@@ -693,7 +694,7 @@ export class GameEngine {
           upgrades.chopSpeed++;
           break;
         case 'carryCapacity':
-          upgrades.carryCapacity += 10;
+          upgrades.carryCapacity++;
           break;
         case 'restSpeed':
           workerUpgrades.restSpeed++;

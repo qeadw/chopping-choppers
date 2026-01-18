@@ -50,8 +50,8 @@ export function updatePlayer(
     vy /= len;
   }
 
-  // Apply speed with upgrade multiplier
-  const speed = config.playerSpeed * upgrades.moveSpeed;
+  // Apply speed with upgrade multiplier (10% compound per level)
+  const speed = config.playerSpeed * Math.pow(1.1, upgrades.moveSpeed - 1);
   player.velocity.x = vx * speed;
   player.velocity.y = vy * speed;
 
@@ -66,7 +66,8 @@ export function canChop(player: Player): boolean {
 
 export function startChop(player: Player, config: GameConfig, upgrades: Upgrades): void {
   player.isChopping = true;
-  player.chopTimer = config.chopCooldown / upgrades.chopSpeed;
+  // Chop speed: 10% faster per level (compound)
+  player.chopTimer = config.chopCooldown / Math.pow(1.1, upgrades.chopSpeed - 1);
 }
 
 export function updateCamera(camera: Camera, player: Player): void {

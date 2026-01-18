@@ -101,7 +101,7 @@ export interface Upgrades {
   axePower: number;      // Damage per chop (starts at 1)
   moveSpeed: number;     // Speed multiplier (starts at 1)
   chopSpeed: number;     // Chop speed multiplier (starts at 1)
-  carryCapacity: number; // Max wood capacity (starts at 20)
+  carryCapacity: number; // Level (starts at 1), effective = 10 * 1.5^(level-1)
 }
 
 export const UPGRADE_COSTS = {
