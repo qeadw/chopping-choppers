@@ -484,8 +484,12 @@ export class GameEngine {
     this.syncDeadTreesMap();
 
     // Handle chopping
-    if (this.state.input.chop && !this.pendingChop) {
-      this.pendingChop = true;
+    // After chop speed level 5, allow holding to auto-swing
+    const autoChopEnabled = this.state.upgrades.chopSpeed >= 5;
+    if (this.state.input.chop && (autoChopEnabled || !this.pendingChop)) {
+      if (!autoChopEnabled) {
+        this.pendingChop = true;
+      }
       this.tryChop();
     }
     if (!this.state.input.chop) {
@@ -1052,6 +1056,12 @@ export class GameEngine {
             break;
           }
 
+          // Always check for a closer wood drop and switch if found
+          const closerDrop = this.findClosestWoodDrop(worker.position.x, worker.position.y, 400, worker.targetDrop);
+          if (closerDrop && closerDrop !== worker.targetDrop) {
+            worker.targetDrop = closerDrop;
+          }
+
           // Move toward drop
           const moveDx = worker.targetDrop.x - worker.position.x;
           const moveDy = worker.targetDrop.y - worker.position.y;
@@ -1270,6 +1280,33 @@ export class GameEngine {
       // Check if a worker is already collecting this
       const alreadyTargeted = this.state.workers.some(w => w.targetDrop === drop);
       if (alreadyTargeted) continue;
+
+      const dx = drop.x - x;
+      const dy = drop.y - y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      if (dist < nearestDist) {
+        nearestDist = dist;
+        nearest = drop;
+      }
+    }
+
+    return nearest;
+  }
+
+  // Find closest wood drop, including current target but excluding other workers' targets
+  private findClosestWoodDrop(x: number, y: number, maxRange: number, currentTarget: WoodDrop | null): WoodDrop | null {
+    let nearest: WoodDrop | null = null;
+    let nearestDist = maxRange;
+
+    for (const drop of this.state.woodDrops) {
+      if (drop.amount <= 0) continue;
+
+      // Allow current target, but skip drops targeted by other workers
+      if (drop !== currentTarget) {
+        const alreadyTargeted = this.state.workers.some(w => w.targetDrop === drop);
+        if (alreadyTargeted) continue;
+      }
 
       const dx = drop.x - x;
       const dy = drop.y - y;

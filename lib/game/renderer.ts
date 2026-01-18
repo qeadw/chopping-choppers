@@ -434,7 +434,7 @@ function drawUI(
 
   // Top-left: Resources panel
   ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-  ctx.fillRect(padding, padding, 220, 110);
+  ctx.fillRect(padding, padding, 220, 175);
 
   ctx.fillStyle = '#fff';
   ctx.font = 'bold 16px monospace';
@@ -472,6 +472,27 @@ function drawUI(
   ctx.fillStyle = '#aaa';
   ctx.font = '11px monospace';
   ctx.fillText(`Total chopped: ${state.totalWoodChopped}`, padding + 10, padding + 102);
+
+  // Player stats
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 11px monospace';
+  ctx.fillText('PLAYER STATS:', padding + 10, padding + 120);
+  ctx.font = '10px monospace';
+  ctx.fillStyle = '#aaa';
+  const effAxePower = Math.pow(1.4, state.upgrades.axePower - 1).toFixed(2);
+  const effMoveSpeed = (100 * Math.pow(1.1, state.upgrades.moveSpeed - 1)).toFixed(0);
+  const effChopSpeed = (100 * Math.pow(1.1, state.upgrades.chopSpeed - 1)).toFixed(0);
+  ctx.fillText(`Dmg: ${effAxePower}  Move: ${effMoveSpeed}%  Chop: ${effChopSpeed}%`, padding + 10, padding + 134);
+  ctx.fillText(`Carry: ${effectiveCarryCap}  (Lv ${state.upgrades.axePower}/${state.upgrades.moveSpeed}/${state.upgrades.chopSpeed}/${state.upgrades.carryCapacity})`, padding + 10, padding + 148);
+
+  // Auto-chop indicator
+  if (state.upgrades.chopSpeed >= 5) {
+    ctx.fillStyle = '#4f4';
+    ctx.fillText('Auto-chop: ON (hold click)', padding + 10, padding + 162);
+  } else {
+    ctx.fillStyle = '#888';
+    ctx.fillText(`Auto-chop: Lv5 chop speed`, padding + 10, padding + 162);
+  }
 
   // Top-right: Upgrades panel
   const upgradeWidth = 230;
