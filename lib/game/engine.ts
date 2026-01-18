@@ -193,7 +193,7 @@ export class GameEngine {
     this.wheelHandler = (e: WheelEvent) => {
       e.preventDefault();
       const zoomSpeed = 0.1;
-      const minZoom = 0.2;
+      const minZoom = 0.1;  // Can zoom out twice as far
       const maxZoom = 1.0;
 
       if (e.deltaY > 0) {
