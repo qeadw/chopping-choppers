@@ -156,8 +156,10 @@ function drawTree(
     sprite.height * scale
   );
 
-  // Draw health bar if tree is damaged but not dead
-  if (!tree.isDead && tree.health < tree.maxHealth) {
+  // Draw health bar if tree is damaged (health < maxHealth or < 2x maxHealth for challenge)
+  // For challenge chunks, trees have 2x maxHealth so we show health / (maxHealth * 2)
+  const effectiveMaxHealth = tree.health > tree.maxHealth ? tree.maxHealth * 2 : tree.maxHealth;
+  if (!tree.isDead && tree.health < effectiveMaxHealth) {
     const barWidth = 20 * scale;
     const barHeight = 3 * scale;
     const barX = (tree.x - camera.x) * scale - barWidth / 2;
@@ -167,9 +169,15 @@ function drawTree(
     ctx.fillStyle = '#333';
     ctx.fillRect(barX, barY, barWidth, barHeight);
 
-    // Health
-    const healthPercent = tree.health / tree.maxHealth;
-    ctx.fillStyle = healthPercent > 0.5 ? '#4a4' : healthPercent > 0.25 ? '#aa4' : '#a44';
+    // Health - use effective max for percentage
+    const healthPercent = tree.health / effectiveMaxHealth;
+    // Orange bar for challenge trees (2x health), green/yellow/red for normal
+    const isChallenge = effectiveMaxHealth > tree.maxHealth;
+    if (isChallenge) {
+      ctx.fillStyle = healthPercent > 0.5 ? '#f80' : healthPercent > 0.25 ? '#fa0' : '#f44';
+    } else {
+      ctx.fillStyle = healthPercent > 0.5 ? '#4a4' : healthPercent > 0.25 ? '#aa4' : '#a44';
+    }
     ctx.fillRect(barX, barY, barWidth * healthPercent, barHeight);
   }
 

@@ -477,6 +477,20 @@ export class GameEngine {
     }
   }
 
+  // Apply 2x health to trees that just respawned in challenge chunks
+  private applyChallengeHealthToRespawnedTrees(): void {
+    for (const [key, chunk] of this.state.chunks) {
+      if (!this.state.challengeChunks.has(key)) continue;
+
+      for (const tree of chunk.trees) {
+        // If tree is alive and has exactly maxHealth, it just respawned - give it 2x
+        if (!tree.isDead && tree.health === tree.maxHealth) {
+          tree.health = tree.maxHealth * 2;
+        }
+      }
+    }
+  }
+
   private spawnWorkerSilent(type: WorkerType): void {
     const { shack, workerUpgrades } = this.state;
     const isCollector = type === WorkerType.Collector;
@@ -548,6 +562,9 @@ export class GameEngine {
 
     // Update tree respawn timers
     updateTrees(this.state.chunks, deltaTime, this.config);
+
+    // Ensure trees in challenge chunks have 2x health when they respawn
+    this.applyChallengeHealthToRespawnedTrees();
 
     // Sync deadTreesMap with actual tree state (handle respawns)
     this.syncDeadTreesMap();
@@ -1496,7 +1513,13 @@ export class GameEngine {
       return false;
     }
 
-    const chunk = this.state.chunks.get(key);
+    // Ensure chunk is loaded - generate it if not present
+    let chunk = this.state.chunks.get(key);
+    if (!chunk) {
+      chunk = generateChunk(chunkX, chunkY, this.config, this.state.worldSeed);
+      this.state.chunks.set(key, chunk);
+    }
+
     const centerX = chunkX * this.config.chunkSize + this.config.chunkSize / 2;
     const centerY = chunkY * this.config.chunkSize + this.config.chunkSize / 2;
 
@@ -1511,14 +1534,14 @@ export class GameEngine {
     }
 
     // Respawn all trees in this chunk with appropriate health
-    if (chunk) {
-      const isChallenge = this.state.challengeChunks.has(key);
-      for (const tree of chunk.trees) {
-        tree.isDead = false;
-        tree.respawnTimer = 0;
-        // Double health in challenge mode
-        tree.health = isChallenge ? tree.maxHealth * 2 : tree.maxHealth;
-      }
+    const isChallenge = this.state.challengeChunks.has(key);
+    for (const tree of chunk.trees) {
+      tree.isDead = false;
+      tree.respawnTimer = 0;
+      // Double health in challenge mode
+      tree.health = isChallenge ? tree.maxHealth * 2 : tree.maxHealth;
+      // Also remove from dead trees map so save/load works correctly
+      this.deadTreesMap.delete(tree.id);
     }
 
     // Set 5 minute cooldown
