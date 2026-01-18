@@ -37,10 +37,21 @@ interface DeadTreeData {
 interface WorkerSaveData {
   type: 'chopper' | 'collector';
   wood: number;
+  stamina: number;
+  restTimer: number;
+  state: string;
+}
+
+interface WoodDropSaveData {
+  x: number;
+  y: number;
+  amount: number;
+  lifetime: number;
 }
 
 interface SaveData {
   money: number;
+  wood?: number;  // Player's carried wood
   upgrades: {
     axePower: number;
     moveSpeed: number;
@@ -59,6 +70,8 @@ interface SaveData {
   collectorCount: number;
   deadTrees?: DeadTreeData[];
   workers?: WorkerSaveData[];
+  worldSeed?: number;
+  woodDrops?: WoodDropSaveData[];
 }
 
 export class GameEngine {
@@ -77,6 +90,17 @@ export class GameEngine {
   private beforeUnloadHandler: () => void;
   private saveIntervalId: number = 0;
   private deadTreesMap: Map<string, number> = new Map(); // tree ID -> respawn timer
+
+  // Generate a unique world seed using crypto API for better randomness
+  private generateWorldSeed(): number {
+    if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+      const array = new Uint32Array(1);
+      crypto.getRandomValues(array);
+      return array[0];
+    }
+    // Fallback to Math.random with timestamp for uniqueness
+    return Math.floor(Math.random() * 2147483647) ^ Date.now();
+  }
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -129,13 +153,14 @@ export class GameEngine {
       totalMoneyEarned: 0,
       workers: [],
       showStumpTimers: true,
+      worldSeed: this.generateWorldSeed(),
     };
 
     // Load saved progress
     this.loadProgress();
 
     // Generate initial chunks around player
-    updateChunks(this.state.chunks, this.state.camera, this.config);
+    updateChunks(this.state.chunks, this.state.camera, this.config, this.state.worldSeed);
 
     // Setup auto-save
     this.saveIntervalId = window.setInterval(() => this.saveProgress(), SAVE_INTERVAL);
@@ -212,14 +237,26 @@ export class GameEngine {
         deadTrees.push({ id, respawnTimer });
       }
 
-      // Save worker data including their carried wood
+      // Save worker data including their carried wood and stamina
       const workers: WorkerSaveData[] = this.state.workers.map(w => ({
         type: w.type === WorkerType.Chopper ? 'chopper' : 'collector',
         wood: w.wood,
+        stamina: w.stamina,
+        restTimer: w.restTimer,
+        state: w.state,
+      }));
+
+      // Save wood drops on the ground
+      const woodDrops: WoodDropSaveData[] = this.state.woodDrops.map(d => ({
+        x: d.x,
+        y: d.y,
+        amount: d.amount,
+        lifetime: d.lifetime,
       }));
 
       const saveData: SaveData = {
         money: this.state.money,
+        wood: this.state.wood,
         upgrades: { ...this.state.upgrades },
         workerUpgrades: { ...this.state.workerUpgrades },
         totalWoodChopped: this.state.totalWoodChopped,
@@ -228,6 +265,8 @@ export class GameEngine {
         collectorCount: this.state.workers.filter(w => w.type === WorkerType.Collector).length,
         deadTrees,
         workers,
+        worldSeed: this.state.worldSeed,
+        woodDrops,
       };
       localStorage.setItem(SAVE_KEY, JSON.stringify(saveData));
     } catch (e) {
@@ -242,10 +281,16 @@ export class GameEngine {
 
       const data: SaveData = JSON.parse(saved);
 
-      // Restore money and stats
+      // Restore money, wood, and stats
       this.state.money = data.money || 0;
+      this.state.wood = data.wood || 0;
       this.state.totalWoodChopped = data.totalWoodChopped || 0;
       this.state.totalMoneyEarned = data.totalMoneyEarned || 0;
+
+      // Restore world seed if saved, otherwise keep the randomly generated one
+      if (data.worldSeed !== undefined) {
+        this.state.worldSeed = data.worldSeed;
+      }
 
       // Restore upgrades
       if (data.upgrades) {
@@ -264,16 +309,43 @@ export class GameEngine {
         this.applyDeadTreesToChunks();
       }
 
-      // Restore workers with their inventories
+      // Restore wood drops on the ground
+      if (data.woodDrops && data.woodDrops.length > 0) {
+        for (const dropData of data.woodDrops) {
+          this.state.woodDrops.push({
+            id: `drop_${dropIdCounter++}`,
+            x: dropData.x,
+            y: dropData.y,
+            amount: dropData.amount,
+            lifetime: dropData.lifetime,
+            bobOffset: Math.random() * Math.PI * 2,
+          });
+        }
+      }
+
+      // Restore workers with their inventories and stamina
       if (data.workers && data.workers.length > 0) {
         // New save format with worker details
         for (const workerData of data.workers) {
           const type = workerData.type === 'chopper' ? WorkerType.Chopper : WorkerType.Collector;
           this.spawnWorkerSilent(type);
-          // Set the wood amount on the last spawned worker
+          // Set the wood, stamina, and state on the last spawned worker
           const lastWorker = this.state.workers[this.state.workers.length - 1];
           if (lastWorker) {
             lastWorker.wood = workerData.wood;
+            // Restore stamina if saved (backwards compatible)
+            if (workerData.stamina !== undefined) {
+              lastWorker.stamina = workerData.stamina;
+            }
+            if (workerData.restTimer !== undefined) {
+              lastWorker.restTimer = workerData.restTimer;
+            }
+            // Restore state - if they were resting, keep them resting
+            if (workerData.state === 'resting') {
+              lastWorker.state = WorkerState.Resting;
+            } else if (workerData.state === 'going_to_rest') {
+              lastWorker.state = WorkerState.GoingToRest;
+            }
           }
         }
       } else {
@@ -324,7 +396,7 @@ export class GameEngine {
     const { shack, workerUpgrades } = this.state;
     const isCollector = type === WorkerType.Collector;
     const baseMaxStamina = isCollector ? 60 : 100;
-    const baseRestTime = isCollector ? 8 : 5;
+    const baseRestTime = 20;  // 20 seconds rest time for all workers
 
     const worker: Worker = {
       id: `worker_${workerIdCounter++}`,
@@ -381,7 +453,7 @@ export class GameEngine {
     updateCamera(this.state.camera, this.state.player);
 
     // Update chunks (generate new ones, remove distant ones)
-    updateChunks(this.state.chunks, this.state.camera, this.config);
+    updateChunks(this.state.chunks, this.state.camera, this.config, this.state.worldSeed);
 
     // Apply saved dead tree state to newly generated chunks
     this.applyDeadTreesToChunks();
@@ -759,7 +831,7 @@ export class GameEngine {
     // Collectors rest longer and more often (lower max stamina, longer rest time)
     const isCollector = type === WorkerType.Collector;
     const baseMaxStamina = isCollector ? 60 : 100;  // Collectors tire faster
-    const baseRestTime = isCollector ? 8 : 5;       // Collectors rest longer
+    const baseRestTime = 20;  // 20 seconds rest time for all workers
 
     const worker: Worker = {
       id: `worker_${workerIdCounter++}`,

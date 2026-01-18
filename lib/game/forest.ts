@@ -18,9 +18,9 @@ function chunkKey(chunkX: number, chunkY: number): string {
   return `${chunkX},${chunkY}`;
 }
 
-function hashCoords(x: number, y: number): number {
-  // Simple hash function for chunk coordinates
-  let hash = x * 374761393 + y * 668265263;
+function hashCoords(x: number, y: number, worldSeed: number): number {
+  // Hash function combining chunk coordinates with world seed
+  let hash = x * 374761393 + y * 668265263 + worldSeed * 1103515245;
   hash = (hash ^ (hash >> 13)) * 1274126177;
   return hash ^ (hash >> 16);
 }
@@ -60,8 +60,8 @@ function wouldOverlap(x: number, y: number, type: TreeType, existingTrees: Tree[
 
 let treeIdCounter = 0;
 
-export function generateChunk(chunkX: number, chunkY: number, config: GameConfig): Chunk {
-  const seed = hashCoords(chunkX, chunkY);
+export function generateChunk(chunkX: number, chunkY: number, config: GameConfig, worldSeed: number = 0): Chunk {
+  const seed = hashCoords(chunkX, chunkY, worldSeed);
   const rng = new SeededRandom(seed);
 
   const trees: Tree[] = [];
@@ -196,7 +196,8 @@ export function getVisibleChunks(
 export function updateChunks(
   chunks: Map<string, Chunk>,
   camera: Camera,
-  config: GameConfig
+  config: GameConfig,
+  worldSeed: number = 0
 ): void {
   const visibleChunks = getVisibleChunks(camera, config);
   const visibleKeys = new Set(visibleChunks.map(c => chunkKey(c.chunkX, c.chunkY)));
@@ -205,7 +206,7 @@ export function updateChunks(
   for (const { chunkX, chunkY } of visibleChunks) {
     const key = chunkKey(chunkX, chunkY);
     if (!chunks.has(key)) {
-      chunks.set(key, generateChunk(chunkX, chunkY, config));
+      chunks.set(key, generateChunk(chunkX, chunkY, config, worldSeed));
     }
   }
 

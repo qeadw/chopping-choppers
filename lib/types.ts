@@ -220,6 +220,7 @@ export interface GameState {
   totalMoneyEarned: number;
   workers: Worker[];
   showStumpTimers: boolean;
+  worldSeed: number;
 }
 
 export interface SpriteSheet {
