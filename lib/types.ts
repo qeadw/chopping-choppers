@@ -63,11 +63,11 @@ export const TREE_STATS: Record<TreeType, { health: number; woodDrop: number; hi
   [TreeType.GiantRedwood]: { health: 120, woodDrop: 15, hitboxRadius: 14 },
   [TreeType.AncientOak]: { health: 160, woodDrop: 25, hitboxRadius: 16 },
   [TreeType.MagicTree]: { health: 240, woodDrop: 50, hitboxRadius: 12 },
-  [TreeType.CrystalTree]: { health: 400, woodDrop: 100, hitboxRadius: 10 },
-  [TreeType.VoidTree]: { health: 600, woodDrop: 200, hitboxRadius: 14 },
-  [TreeType.CosmicTree]: { health: 1000, woodDrop: 500, hitboxRadius: 12 },
-  [TreeType.DivineTree]: { health: 1500, woodDrop: 1000, hitboxRadius: 16 },
-  [TreeType.WorldTree]: { health: 2500, woodDrop: 2500, hitboxRadius: 20 },
+  [TreeType.CrystalTree]: { health: 400, woodDrop: 500, hitboxRadius: 10 },
+  [TreeType.VoidTree]: { health: 600, woodDrop: 1000, hitboxRadius: 14 },
+  [TreeType.CosmicTree]: { health: 1000, woodDrop: 2500, hitboxRadius: 12 },
+  [TreeType.DivineTree]: { health: 1500, woodDrop: 5000, hitboxRadius: 16 },
+  [TreeType.WorldTree]: { health: 2500, woodDrop: 12500, hitboxRadius: 20 },
 };
 
 export interface WoodDrop {
