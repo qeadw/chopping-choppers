@@ -295,6 +295,14 @@ export class GameEngine {
       // Restore upgrades
       if (data.upgrades) {
         this.state.upgrades = { ...this.state.upgrades, ...data.upgrades };
+
+        // Migrate old carryCapacity format (stored as 20, 30, 40...) to new level format (1, 2, 3...)
+        if (this.state.upgrades.carryCapacity > 10) {
+          // Old format: base 20, +10 per upgrade. Convert to level.
+          this.state.upgrades.carryCapacity = Math.floor((this.state.upgrades.carryCapacity - 20) / 10) + 1;
+          // Clamp to valid range (1-6 based on upgrade costs length + 1)
+          this.state.upgrades.carryCapacity = Math.max(1, Math.min(6, this.state.upgrades.carryCapacity));
+        }
       }
       if (data.workerUpgrades) {
         this.state.workerUpgrades = { ...this.state.workerUpgrades, ...data.workerUpgrades };
