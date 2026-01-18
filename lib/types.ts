@@ -216,6 +216,18 @@ export const WORKER_UPGRADE_COSTS = {
   workerPower: [250, 600, 1500, 4000],
 };
 
+export enum WaypointType {
+  Chopper = 'chopper',
+  Collector = 'collector',
+}
+
+export interface Waypoint {
+  id: string;
+  x: number;
+  y: number;
+  type: WaypointType;
+}
+
 export interface GameState {
   player: Player;
   camera: Camera;
@@ -239,6 +251,9 @@ export interface GameState {
   platinumChunks: Set<string>; // Chunks cleared in challenge mode (platinum bordered)
   challengeChunks: Set<string>; // Chunks with challenge mode enabled (2x health, 2x drops)
   chunkToggleCooldowns: Map<string, number>; // Cooldown timers for chunk toggles (5 min)
+  choppersEnabled: boolean;  // Whether choppers are active
+  collectorsEnabled: boolean; // Whether collectors are active
+  waypoints: Waypoint[];  // Worker waypoints for directing them
 }
 
 export interface SpriteSheet {

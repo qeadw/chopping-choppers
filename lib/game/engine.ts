@@ -16,6 +16,8 @@ import {
   COLLECTOR_COSTS,
   WORKER_UPGRADE_COSTS,
   Position,
+  Waypoint,
+  WaypointType,
 } from '../types';
 import { createPlayer, updatePlayer, createCamera, updateCamera, canChop, startChop } from './player';
 import { createInputState, setupInputHandlers } from './input';
@@ -25,6 +27,7 @@ import { createSpriteSheet } from './sprites';
 
 let dropIdCounter = 0;
 let workerIdCounter = 0;
+let waypointIdCounter = 0;
 
 const SAVE_KEY = 'chopping_choppers_save';
 const SAVE_INTERVAL = 5000; // Save every 5 seconds
@@ -76,6 +79,9 @@ interface SaveData {
   platinumChunks?: string[]; // Chunks cleared in challenge mode
   challengeChunks?: string[]; // Chunks with challenge mode enabled
   chunkToggleCooldowns?: { key: string; time: number }[]; // Cooldown timers
+  choppersEnabled?: boolean;
+  collectorsEnabled?: boolean;
+  waypoints?: { x: number; y: number; type: string }[];
 }
 
 export class GameEngine {
@@ -98,6 +104,7 @@ export class GameEngine {
   private deadTreesMap: Map<string, number> = new Map(); // tree ID -> respawn timer
   private tabAwayTime: number = 0; // Timestamp when user tabbed away
   private catchUpTimeRemaining: number = 0; // Time left to simulate at accelerated rate
+  private waypointPlacementMode: WaypointType | null = null; // Current waypoint placement mode
 
   // Generate a unique world seed using crypto API for better randomness
   private generateWorldSeed(): number {
@@ -166,6 +173,9 @@ export class GameEngine {
       platinumChunks: new Set<string>(),
       challengeChunks: new Set<string>(),
       chunkToggleCooldowns: new Map<string, number>(),
+      choppersEnabled: true,
+      collectorsEnabled: true,
+      waypoints: [],
     };
 
     // Load saved progress
@@ -190,13 +200,46 @@ export class GameEngine {
     window.addEventListener('keydown', this.upgradeKeyHandler);
 
     // Setup hire worker key handler (J = Chopper, K = Collector, T = Toggle timers)
+    // C = Toggle choppers, V = Toggle collectors
+    // When zoomed out: Q = Place chopper waypoint, R = Place collector waypoint, X = Clear waypoints
     this.hireKeyHandler = (e: KeyboardEvent) => {
-      if (e.key.toLowerCase() === 'j') {
+      const key = e.key.toLowerCase();
+      if (key === 'j') {
         this.hireWorker(WorkerType.Chopper);
-      } else if (e.key.toLowerCase() === 'k') {
+      } else if (key === 'k') {
         this.hireWorker(WorkerType.Collector);
-      } else if (e.key.toLowerCase() === 't') {
+      } else if (key === 't') {
         this.state.showStumpTimers = !this.state.showStumpTimers;
+      } else if (key === 'c') {
+        // Toggle choppers
+        this.state.choppersEnabled = !this.state.choppersEnabled;
+        const status = this.state.choppersEnabled ? 'ENABLED' : 'DISABLED';
+        this.addFloatingText(this.state.player.position.x, this.state.player.position.y - 30, `Choppers ${status}`, this.state.choppersEnabled ? '#00FF00' : '#FF4444');
+      } else if (key === 'v') {
+        // Toggle collectors
+        this.state.collectorsEnabled = !this.state.collectorsEnabled;
+        const status = this.state.collectorsEnabled ? 'ENABLED' : 'DISABLED';
+        this.addFloatingText(this.state.player.position.x, this.state.player.position.y - 30, `Collectors ${status}`, this.state.collectorsEnabled ? '#00FF00' : '#FF4444');
+      } else if (key === 'q' && this.state.camera.zoom <= 0.15) {
+        // Toggle chopper waypoint placement mode
+        if (this.waypointPlacementMode === WaypointType.Chopper) {
+          this.waypointPlacementMode = null;
+        } else {
+          this.waypointPlacementMode = WaypointType.Chopper;
+          this.addFloatingText(this.state.player.position.x, this.state.player.position.y - 30, 'Click to place CHOPPER waypoint', '#5A9C5A');
+        }
+      } else if (key === 'r' && this.state.camera.zoom <= 0.15) {
+        // Toggle collector waypoint placement mode
+        if (this.waypointPlacementMode === WaypointType.Collector) {
+          this.waypointPlacementMode = null;
+        } else {
+          this.waypointPlacementMode = WaypointType.Collector;
+          this.addFloatingText(this.state.player.position.x, this.state.player.position.y - 30, 'Click to place COLLECTOR waypoint', '#88AAFF');
+        }
+      } else if (key === 'x' && this.state.camera.zoom <= 0.15) {
+        // Clear all waypoints
+        this.state.waypoints = [];
+        this.addFloatingText(this.state.player.position.x, this.state.player.position.y - 30, 'Waypoints cleared', '#AAAAAA');
       }
     };
     window.addEventListener('keydown', this.hireKeyHandler);
@@ -218,7 +261,7 @@ export class GameEngine {
     };
     this.canvas.addEventListener('wheel', this.wheelHandler, { passive: false });
 
-    // Setup click handler for chunk challenge toggle
+    // Setup click handler for chunk challenge toggle and waypoint placement
     this.clickHandler = (e: MouseEvent) => {
       // Only works when fully zoomed out
       if (this.state.camera.zoom > 0.15) return;
@@ -238,6 +281,22 @@ export class GameEngine {
       const scale = this.config.pixelScale * this.state.camera.zoom;
       const worldX = effectiveCameraX + screenX / scale;
       const worldY = effectiveCameraY + screenY / scale;
+
+      // Check if in waypoint placement mode
+      if (this.waypointPlacementMode !== null) {
+        // Place waypoint
+        const waypoint: Waypoint = {
+          id: `waypoint_${waypointIdCounter++}`,
+          x: worldX,
+          y: worldY,
+          type: this.waypointPlacementMode,
+        };
+        this.state.waypoints.push(waypoint);
+        const color = this.waypointPlacementMode === WaypointType.Chopper ? '#5A9C5A' : '#88AAFF';
+        const typeName = this.waypointPlacementMode === WaypointType.Chopper ? 'Chopper' : 'Collector';
+        this.addFloatingText(worldX, worldY, `${typeName} waypoint placed`, color);
+        return;
+      }
 
       // Find which chunk was clicked
       const chunkX = Math.floor(worldX / this.config.chunkSize);
@@ -343,6 +402,9 @@ export class GameEngine {
         platinumChunks: Array.from(this.state.platinumChunks),
         challengeChunks: Array.from(this.state.challengeChunks),
         chunkToggleCooldowns: Array.from(this.state.chunkToggleCooldowns.entries()).map(([key, time]) => ({ key, time })),
+        choppersEnabled: this.state.choppersEnabled,
+        collectorsEnabled: this.state.collectorsEnabled,
+        waypoints: this.state.waypoints.map(w => ({ x: w.x, y: w.y, type: w.type })),
       };
       localStorage.setItem(SAVE_KEY, JSON.stringify(saveData));
     } catch (e) {
@@ -473,6 +535,24 @@ export class GameEngine {
         for (const { key, time } of data.chunkToggleCooldowns) {
           this.state.chunkToggleCooldowns.set(key, time);
         }
+      }
+
+      // Restore worker enable states
+      if (data.choppersEnabled !== undefined) {
+        this.state.choppersEnabled = data.choppersEnabled;
+      }
+      if (data.collectorsEnabled !== undefined) {
+        this.state.collectorsEnabled = data.collectorsEnabled;
+      }
+
+      // Restore waypoints
+      if (data.waypoints && data.waypoints.length > 0) {
+        this.state.waypoints = data.waypoints.map(w => ({
+          id: `waypoint_${waypointIdCounter++}`,
+          x: w.x,
+          y: w.y,
+          type: w.type as WaypointType,
+        }));
       }
 
       console.log('Progress loaded!');
@@ -1100,6 +1180,17 @@ export class GameEngine {
       const isChopper = worker.type === WorkerType.Chopper;
       const isCollector = worker.type === WorkerType.Collector;
 
+      // Check if this worker type is disabled
+      const isDisabled = (isChopper && !this.state.choppersEnabled) || (isCollector && !this.state.collectorsEnabled);
+      if (isDisabled && worker.state !== WorkerState.Resting && worker.state !== WorkerState.GoingToRest) {
+        // Disabled workers just idle
+        worker.velocity.x = 0;
+        worker.velocity.y = 0;
+        worker.targetTree = null;
+        worker.targetDrop = null;
+        continue;
+      }
+
       switch (worker.state) {
         case WorkerState.Idle:
           // Check if worker needs rest
@@ -1478,6 +1569,9 @@ export class GameEngine {
     let nearest: Tree | null = null;
     let nearestDist = 300; // Worker search range
 
+    // Get chopper waypoints
+    const chopperWaypoints = this.state.waypoints.filter(w => w.type === WaypointType.Chopper);
+
     for (const chunk of this.state.chunks.values()) {
       for (const tree of chunk.trees) {
         if (tree.isDead) continue;
@@ -1490,7 +1584,23 @@ export class GameEngine {
 
         const dx = tree.x - worker.position.x;
         const dy = tree.y - worker.position.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
+        let dist = Math.sqrt(dx * dx + dy * dy);
+
+        // If there are waypoints, prioritize trees near waypoints
+        if (chopperWaypoints.length > 0) {
+          // Find distance to nearest waypoint
+          let nearestWaypointDist = Infinity;
+          for (const wp of chopperWaypoints) {
+            const wpDx = tree.x - wp.x;
+            const wpDy = tree.y - wp.y;
+            const wpDist = Math.sqrt(wpDx * wpDx + wpDy * wpDy);
+            nearestWaypointDist = Math.min(nearestWaypointDist, wpDist);
+          }
+          // Trees near waypoints get priority (reduce effective distance)
+          if (nearestWaypointDist < 400) {
+            dist = dist * 0.3; // Much more attractive
+          }
+        }
 
         if (dist < nearestDist) {
           nearestDist = dist;
@@ -1535,6 +1645,9 @@ export class GameEngine {
     let nearest: WoodDrop | null = null;
     let nearestDist = maxRange;
 
+    // Get collector waypoints
+    const collectorWaypoints = this.state.waypoints.filter(w => w.type === WaypointType.Collector);
+
     for (const drop of this.state.woodDrops) {
       if (drop.amount <= 0) continue;
 
@@ -1544,7 +1657,22 @@ export class GameEngine {
 
       const dx = drop.x - x;
       const dy = drop.y - y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
+      let dist = Math.sqrt(dx * dx + dy * dy);
+
+      // If there are waypoints, prioritize drops near waypoints
+      if (collectorWaypoints.length > 0) {
+        let nearestWaypointDist = Infinity;
+        for (const wp of collectorWaypoints) {
+          const wpDx = drop.x - wp.x;
+          const wpDy = drop.y - wp.y;
+          const wpDist = Math.sqrt(wpDx * wpDx + wpDy * wpDy);
+          nearestWaypointDist = Math.min(nearestWaypointDist, wpDist);
+        }
+        // Drops near waypoints get priority
+        if (nearestWaypointDist < 400) {
+          dist = dist * 0.3;
+        }
+      }
 
       if (dist < nearestDist) {
         nearestDist = dist;
@@ -1560,6 +1688,9 @@ export class GameEngine {
     let nearest: WoodDrop | null = null;
     let nearestDist = maxRange;
 
+    // Get collector waypoints
+    const collectorWaypoints = this.state.waypoints.filter(w => w.type === WaypointType.Collector);
+
     for (const drop of this.state.woodDrops) {
       if (drop.amount <= 0) continue;
 
@@ -1571,7 +1702,21 @@ export class GameEngine {
 
       const dx = drop.x - x;
       const dy = drop.y - y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
+      let dist = Math.sqrt(dx * dx + dy * dy);
+
+      // If there are waypoints, prioritize drops near waypoints
+      if (collectorWaypoints.length > 0) {
+        let nearestWaypointDist = Infinity;
+        for (const wp of collectorWaypoints) {
+          const wpDx = drop.x - wp.x;
+          const wpDy = drop.y - wp.y;
+          const wpDist = Math.sqrt(wpDx * wpDx + wpDy * wpDy);
+          nearestWaypointDist = Math.min(nearestWaypointDist, wpDist);
+        }
+        if (nearestWaypointDist < 400) {
+          dist = dist * 0.3;
+        }
+      }
 
       if (dist < nearestDist) {
         nearestDist = dist;
@@ -1680,22 +1825,32 @@ export class GameEngine {
     return this.state.platinumChunks.has(key) ? 4 : 2;
   }
 
-  // Load 3x3 chunks around each worker so they can always find trees/drops
+  // Load 3x3 chunks around each worker and waypoint so they can always find trees/drops
   private loadWorkerChunks(): void {
+    // Load chunks around workers
     for (const worker of this.state.workers) {
-      const centerChunkX = Math.floor(worker.position.x / this.config.chunkSize);
-      const centerChunkY = Math.floor(worker.position.y / this.config.chunkSize);
+      this.loadChunksAround(worker.position.x, worker.position.y);
+    }
 
-      // Load 3x3 grid around worker
-      for (let dx = -1; dx <= 1; dx++) {
-        for (let dy = -1; dy <= 1; dy++) {
-          const chunkX = centerChunkX + dx;
-          const chunkY = centerChunkY + dy;
-          const key = `${chunkX},${chunkY}`;
+    // Load chunks around waypoints
+    for (const waypoint of this.state.waypoints) {
+      this.loadChunksAround(waypoint.x, waypoint.y);
+    }
+  }
 
-          if (!this.state.chunks.has(key)) {
-            this.state.chunks.set(key, generateChunk(chunkX, chunkY, this.config, this.state.worldSeed));
-          }
+  private loadChunksAround(x: number, y: number): void {
+    const centerChunkX = Math.floor(x / this.config.chunkSize);
+    const centerChunkY = Math.floor(y / this.config.chunkSize);
+
+    // Load 3x3 grid around position
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        const chunkX = centerChunkX + dx;
+        const chunkY = centerChunkY + dy;
+        const key = `${chunkX},${chunkY}`;
+
+        if (!this.state.chunks.has(key)) {
+          this.state.chunks.set(key, generateChunk(chunkX, chunkY, this.config, this.state.worldSeed));
         }
       }
     }
@@ -1716,7 +1871,12 @@ export class GameEngine {
     return this.catchUpTimeRemaining;
   }
 
+  // Get waypoint placement mode for UI display
+  public getWaypointMode(): WaypointType | null {
+    return this.waypointPlacementMode;
+  }
+
   private render(): void {
-    render(this.ctx, this.state, this.sprites, this.config, this.catchUpTimeRemaining);
+    render(this.ctx, this.state, this.sprites, this.config, this.catchUpTimeRemaining, this.waypointPlacementMode);
   }
 }

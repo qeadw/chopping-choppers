@@ -1,4 +1,4 @@
-import { GameState, SpriteSheet, GameConfig, Tree, WoodDrop, Particle, FloatingText, Worker, WorkerType, WorkerState, UPGRADE_COSTS, CHOPPER_COSTS, COLLECTOR_COSTS, WORKER_UPGRADE_COSTS } from '../types';
+import { GameState, SpriteSheet, GameConfig, Tree, WoodDrop, Particle, FloatingText, Worker, WorkerType, WorkerState, UPGRADE_COSTS, CHOPPER_COSTS, COLLECTOR_COSTS, WORKER_UPGRADE_COSTS, WaypointType } from '../types';
 import { chunkKey } from './forest';
 import { getTreeSprite } from './sprites';
 
@@ -10,7 +10,8 @@ export function render(
   state: GameState,
   sprites: SpriteSheet,
   config: GameConfig,
-  catchUpTime: number = 0
+  catchUpTime: number = 0,
+  waypointMode: WaypointType | null = null
 ): void {
   const { camera, player, chunks } = state;
   const baseScale = config.pixelScale;
@@ -106,7 +107,12 @@ export function render(
 
   // Draw chunk debug overlay when zoomed out
   if (camera.zoom < 0.6) {
-    drawChunkOverlay(ctx, state, config, effectiveCamera, scale);
+    drawChunkOverlay(ctx, state, config, effectiveCamera, scale, waypointMode);
+  }
+
+  // Draw waypoints when zoomed out
+  if (camera.zoom < 0.6) {
+    drawWaypoints(ctx, state, effectiveCamera, scale);
   }
 
   // Draw UI (always at normal scale)
@@ -472,7 +478,6 @@ function drawUI(
   ctx.fillText(`$${state.money}`, padding + 10, padding + 52);
 
   // Workers
-  ctx.fillStyle = '#5A9C5A';
   ctx.font = '13px monospace';
   const chopperCount = state.workers.filter(w => w.type === WorkerType.Chopper).length;
   const collectorCount = state.workers.filter(w => w.type === WorkerType.Collector).length;
@@ -486,9 +491,15 @@ function drawUI(
   const nextChopperCost = getWorkerCost(CHOPPER_COSTS, chopperCount);
   const nextCollectorCost = getWorkerCost(COLLECTOR_COSTS, collectorCount);
 
-  ctx.fillText(`Choppers: ${chopperCount} [J] $${nextChopperCost}`, padding + 10, padding + 70);
-  ctx.fillStyle = '#88AAFF';
-  ctx.fillText(`Collectors: ${collectorCount} [K] $${nextCollectorCost}`, padding + 10, padding + 86);
+  // Show choppers with enable/disable status
+  ctx.fillStyle = state.choppersEnabled ? '#5A9C5A' : '#666666';
+  const chopperStatus = state.choppersEnabled ? '' : ' [OFF]';
+  ctx.fillText(`Choppers: ${chopperCount}${chopperStatus} [J] $${nextChopperCost}`, padding + 10, padding + 70);
+
+  // Show collectors with enable/disable status
+  ctx.fillStyle = state.collectorsEnabled ? '#88AAFF' : '#666666';
+  const collectorStatus = state.collectorsEnabled ? '' : ' [OFF]';
+  ctx.fillText(`Collectors: ${collectorCount}${collectorStatus} [K] $${nextCollectorCost}`, padding + 10, padding + 86);
 
   // Stats
   ctx.fillStyle = '#aaa';
@@ -570,9 +581,9 @@ function drawUI(
   ctx.fillRect(padding, controlsY, 620, 25);
 
   ctx.fillStyle = '#ccc';
-  ctx.font = '12px monospace';
+  ctx.font = '11px monospace';
   ctx.textAlign = 'left';
-  ctx.fillText('WASD: Move | Click: Chop | E: Sell | J: Chopper | K: Collector | T: Timers | Scroll: Zoom', padding + 10, controlsY + 16);
+  ctx.fillText('WASD: Move | Click: Chop | E: Sell | J/K: Hire | C/V: Toggle workers | T: Timers | Scroll: Zoom', padding + 10, controlsY + 16);
 
   // Capacity warning
   const playerCapacity = Math.floor(10 * Math.pow(1.5, state.upgrades.carryCapacity - 1));
@@ -644,12 +655,51 @@ function drawUI(
   }
 }
 
+function drawWaypoints(
+  ctx: CanvasRenderingContext2D,
+  state: GameState,
+  camera: { x: number; y: number },
+  scale: number
+): void {
+  for (const waypoint of state.waypoints) {
+    const screenX = (waypoint.x - camera.x) * scale;
+    const screenY = (waypoint.y - camera.y) * scale;
+
+    const isChopper = waypoint.type === WaypointType.Chopper;
+    const color = isChopper ? '#5A9C5A' : '#88AAFF';
+    const symbol = isChopper ? '⚒' : '📦';
+
+    // Draw waypoint marker
+    ctx.beginPath();
+    ctx.arc(screenX, screenY, 8 * scale, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Draw range circle
+    ctx.beginPath();
+    ctx.arc(screenX, screenY, 400 * scale, 0, Math.PI * 2);
+    ctx.strokeStyle = `${color}44`;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Draw symbol
+    ctx.fillStyle = '#fff';
+    ctx.font = `${12 * scale}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillText(symbol, screenX, screenY + 4 * scale);
+  }
+}
+
 function drawChunkOverlay(
   ctx: CanvasRenderingContext2D,
   state: GameState,
   config: GameConfig,
   camera: { x: number; y: number; width: number; height: number; zoom: number },
-  scale: number
+  scale: number,
+  waypointMode: WaypointType | null = null
 ): void {
   const { chunks } = state;
   const chunkSize = config.chunkSize;
@@ -783,11 +833,25 @@ function drawChunkOverlay(
   // Show instruction at bottom when fully zoomed out
   if (fullyZoomedOut) {
     ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-    ctx.fillRect(ctx.canvas.width / 2 - 200, ctx.canvas.height - 60, 400, 25);
-    ctx.fillStyle = '#FFD700';
-    ctx.font = 'bold 12px monospace';
+    ctx.fillRect(ctx.canvas.width / 2 - 280, ctx.canvas.height - 80, 560, 45);
+
+    ctx.font = 'bold 11px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('Click completed chunks for CHALLENGE (Gold: 2x | Platinum: 4x)', ctx.canvas.width / 2, ctx.canvas.height - 43);
+
+    // Show waypoint mode if active
+    if (waypointMode !== null) {
+      const modeName = waypointMode === WaypointType.Chopper ? 'CHOPPER' : 'COLLECTOR';
+      const modeColor = waypointMode === WaypointType.Chopper ? '#5A9C5A' : '#88AAFF';
+      ctx.fillStyle = modeColor;
+      ctx.fillText(`Placing ${modeName} waypoint - Click to place`, ctx.canvas.width / 2, ctx.canvas.height - 60);
+    } else {
+      ctx.fillStyle = '#FFD700';
+      ctx.fillText('Click completed chunks for CHALLENGE (Gold: 2x | Platinum: 4x)', ctx.canvas.width / 2, ctx.canvas.height - 60);
+    }
+
+    ctx.fillStyle = '#AAAAAA';
+    ctx.font = '10px monospace';
+    ctx.fillText('Q: Chopper waypoint | R: Collector waypoint | X: Clear waypoints', ctx.canvas.width / 2, ctx.canvas.height - 43);
   }
 }
 
