@@ -1623,6 +1623,26 @@ export class GameEngine {
         }
       }
 
+      // Stuck detection for choppers going to rest (out of stamina) - phase through trees
+      if (isChopper && worker.state === WorkerState.GoingToRest) {
+        const dx = worker.position.x - worker.lastPosition.x;
+        const dy = worker.position.y - worker.lastPosition.y;
+        const movedDist = Math.sqrt(dx * dx + dy * dy);
+
+        if (movedDist < 0.5 * deltaTime && (Math.abs(worker.velocity.x) > 1 || Math.abs(worker.velocity.y) > 1)) {
+          worker.stuckTimer += deltaTime;
+
+          // After 3 seconds stuck, enable phasing for 1 second
+          if (worker.stuckTimer >= 3) {
+            worker.phaseTimer = 1;
+            worker.stuckTimer = 0;
+            this.addFloatingText(worker.position.x, worker.position.y - 20, '*phase*', '#88FFFF');
+          }
+        } else {
+          worker.stuckTimer = 0;
+        }
+      }
+
       // Update last position for next frame
       worker.lastPosition.x = worker.position.x;
       worker.lastPosition.y = worker.position.y;
