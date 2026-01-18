@@ -609,6 +609,7 @@ function drawUI(
       const effSpeed = Math.round(collector.speed * Math.pow(1.2, workerUpgrades.workerSpeed - 1));
       const effRest = (collector.baseRestTime / Math.pow(1.2, workerUpgrades.restSpeed - 1)).toFixed(1);
       const effCap = Math.floor(collector.carryCapacity * Math.pow(1.8, effectivePower - 1));
+      const pickupRate = Math.pow(1.5, workerUpgrades.workerSpeed - 1).toFixed(2);
 
       ctx.fillStyle = '#88AAFF';
       ctx.fillText('COLLECTORS:', workerPanelX + 10, workerPanelY + yOffset);
@@ -616,7 +617,7 @@ function drawUI(
       ctx.fillStyle = '#aaa';
       ctx.fillText(`  Spd: ${effSpeed}  Cap: ${effCap}`, workerPanelX + 10, workerPanelY + yOffset);
       yOffset += 12;
-      ctx.fillText(`  Rest: ${effRest}s`, workerPanelX + 10, workerPanelY + yOffset);
+      ctx.fillText(`  Pickup: ${pickupRate}/s  Rest: ${effRest}s`, workerPanelX + 10, workerPanelY + yOffset);
     }
   }
 }

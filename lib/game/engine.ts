@@ -1086,37 +1086,60 @@ export class GameEngine {
             break;
           }
 
+          worker.velocity.x = 0;
+          worker.velocity.y = 0;
+
+          // Check if drop is gone or empty
           if (!worker.targetDrop || worker.targetDrop.amount <= 0) {
-            worker.state = WorkerState.Idle;
-            worker.targetDrop = null;
-            break;
-          }
-
-          // Pick up wood - power upgrade increases carry capacity by 20% per level
-          const effectiveCapacity = Math.floor(worker.carryCapacity * Math.pow(1.8, effectivePower - 1));
-          const canCarry = Math.max(0, Math.min(worker.targetDrop.amount, effectiveCapacity - worker.wood));
-          if (canCarry > 0) {
-            worker.wood = Math.min(worker.wood + canCarry, effectiveCapacity); // Cap at max
-            worker.targetDrop.amount -= canCarry;
-            this.addFloatingText(worker.position.x, worker.position.y - 20, `+${canCarry}`, '#8B4513');
-            // Drain stamina based on amount collected
-            worker.stamina -= canCarry * 2;
-
-            // Remove wood drop from array if fully collected
-            if (worker.targetDrop.amount <= 0) {
+            // Remove empty drop from array
+            if (worker.targetDrop) {
               const dropIndex = this.state.woodDrops.indexOf(worker.targetDrop);
               if (dropIndex !== -1) {
                 this.state.woodDrops.splice(dropIndex, 1);
               }
             }
-          }
-          worker.targetDrop = null;
+            worker.targetDrop = null;
 
-          // If full, return to chipper
-          if (worker.wood >= effectiveCapacity) {
-            worker.state = WorkerState.ReturningToChipper;
-          } else {
-            worker.state = WorkerState.Idle;
+            // Check if full, return to chipper
+            const capCheck = Math.floor(worker.carryCapacity * Math.pow(1.8, effectivePower - 1));
+            if (worker.wood >= capCheck) {
+              worker.state = WorkerState.ReturningToChipper;
+            } else {
+              worker.state = WorkerState.Idle;
+            }
+            break;
+          }
+
+          // Pick up wood one at a time - base 1/sec, 50% faster per worker speed upgrade
+          const collectRate = Math.pow(1.5, workerUpgrades.workerSpeed - 1); // items per second
+          const collectInterval = 1 / collectRate;
+
+          if (worker.chopTimer <= 0) {
+            // Pick up 1 wood
+            const effectiveCapacity = Math.floor(worker.carryCapacity * Math.pow(1.8, effectivePower - 1));
+            if (worker.wood < effectiveCapacity && worker.targetDrop.amount > 0) {
+              worker.wood++;
+              worker.targetDrop.amount--;
+              this.addFloatingText(worker.position.x, worker.position.y - 20, '+1', '#8B4513');
+              // Drain stamina per wood collected
+              worker.stamina -= 2;
+
+              // Reset timer for next pickup
+              worker.chopTimer = collectInterval;
+
+              // Check if full now
+              if (worker.wood >= effectiveCapacity) {
+                // Remove empty drop if needed
+                if (worker.targetDrop.amount <= 0) {
+                  const dropIndex = this.state.woodDrops.indexOf(worker.targetDrop);
+                  if (dropIndex !== -1) {
+                    this.state.woodDrops.splice(dropIndex, 1);
+                  }
+                }
+                worker.targetDrop = null;
+                worker.state = WorkerState.ReturningToChipper;
+              }
+            }
           }
           break;
 
