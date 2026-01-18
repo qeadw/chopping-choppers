@@ -1593,8 +1593,8 @@ export class GameEngine {
         if (movedDist < 0.5 * deltaTime && (Math.abs(worker.velocity.x) > 1 || Math.abs(worker.velocity.y) > 1)) {
           worker.stuckTimer += deltaTime;
 
-          // After 2 seconds stuck, target the nearest blocking tree
-          if (worker.stuckTimer >= 2) {
+          // After 3 seconds stuck, target the nearest blocking tree
+          if (worker.stuckTimer >= 3) {
             worker.stuckTimer = 0;
             // Find the nearest tree to the worker (blocking tree)
             let nearestBlockingTree: Tree | null = null;
