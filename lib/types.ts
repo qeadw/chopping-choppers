@@ -159,6 +159,10 @@ export interface Worker {
   maxStamina: number;        // Max stamina before needing rest
   restTimer: number;         // Time left resting
   baseRestTime: number;      // Base rest duration for this worker type
+  // Stuck detection
+  stuckTimer: number;        // How long the worker has been stuck
+  lastPosition: Position;    // Position last frame for stuck detection
+  phaseTimer: number;        // Time remaining to phase through trees
 }
 
 export const CHOPPER_COSTS = [100, 150, 225, 350, 500, 750, 1100];

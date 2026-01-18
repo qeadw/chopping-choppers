@@ -497,13 +497,15 @@ export class GameEngine {
     const baseMaxStamina = isCollector ? 60 : 100;
     const baseRestTime = 20;  // 20 seconds rest time for all workers
 
+    const startPos = {
+      x: shack.x + shack.width / 2 + (Math.random() - 0.5) * 30,
+      y: shack.y + shack.height + (Math.random() - 0.5) * 20,
+    };
+
     const worker: Worker = {
       id: `worker_${workerIdCounter++}`,
       type,
-      position: {
-        x: shack.x + shack.width / 2 + (Math.random() - 0.5) * 30,
-        y: shack.y + shack.height + (Math.random() - 0.5) * 20,
-      },
+      position: { ...startPos },
       velocity: { x: 0, y: 0 },
       state: WorkerState.Idle,
       targetTree: null,
@@ -519,6 +521,9 @@ export class GameEngine {
       maxStamina: baseMaxStamina * workerUpgrades.workDuration,
       restTimer: 0,
       baseRestTime,
+      stuckTimer: 0,
+      lastPosition: { ...startPos },
+      phaseTimer: 0,
     };
 
     this.state.workers.push(worker);
@@ -963,13 +968,15 @@ export class GameEngine {
     const baseMaxStamina = isCollector ? 60 : 100;  // Collectors tire faster
     const baseRestTime = 20;  // 20 seconds rest time for all workers
 
+    const startPos = {
+      x: shack.x + shack.width / 2 + (Math.random() - 0.5) * 30,
+      y: shack.y + shack.height + (Math.random() - 0.5) * 20,
+    };
+
     const worker: Worker = {
       id: `worker_${workerIdCounter++}`,
       type,
-      position: {
-        x: shack.x + shack.width / 2 + (Math.random() - 0.5) * 30,
-        y: shack.y + shack.height + (Math.random() - 0.5) * 20,
-      },
+      position: { ...startPos },
       velocity: { x: 0, y: 0 },
       state: WorkerState.Idle,
       targetTree: null,
@@ -986,6 +993,9 @@ export class GameEngine {
       maxStamina: baseMaxStamina * workerUpgrades.workDuration,
       restTimer: 0,
       baseRestTime,
+      stuckTimer: 0,
+      lastPosition: { ...startPos },
+      phaseTimer: 0,
     };
 
     this.state.workers.push(worker);
@@ -1351,8 +1361,41 @@ export class GameEngine {
       worker.position.x += worker.velocity.x * deltaTime;
       worker.position.y += worker.velocity.y * deltaTime;
 
-      // Check tree collisions for worker
-      this.handleTreeCollisions(worker.position, 5);
+      // Update phase timer
+      if (worker.phaseTimer > 0) {
+        worker.phaseTimer -= deltaTime;
+      }
+
+      // Check tree collisions for worker (skip if phasing)
+      if (worker.phaseTimer <= 0) {
+        this.handleTreeCollisions(worker.position, 5);
+      }
+
+      // Stuck detection for collectors
+      if (isCollector && worker.state !== WorkerState.Resting && worker.state !== WorkerState.Idle) {
+        const dx = worker.position.x - worker.lastPosition.x;
+        const dy = worker.position.y - worker.lastPosition.y;
+        const movedDist = Math.sqrt(dx * dx + dy * dy);
+
+        // If barely moved but has velocity, increment stuck timer
+        if (movedDist < 0.5 * deltaTime && (Math.abs(worker.velocity.x) > 1 || Math.abs(worker.velocity.y) > 1)) {
+          worker.stuckTimer += deltaTime;
+
+          // After 10 seconds stuck, enable phasing for 1 second
+          if (worker.stuckTimer >= 10) {
+            worker.phaseTimer = 1;
+            worker.stuckTimer = 0;
+            this.addFloatingText(worker.position.x, worker.position.y - 20, '*phase*', '#88FFFF');
+          }
+        } else {
+          // Reset stuck timer if moving normally
+          worker.stuckTimer = 0;
+        }
+      }
+
+      // Update last position for next frame
+      worker.lastPosition.x = worker.position.x;
+      worker.lastPosition.y = worker.position.y;
     }
   }
 
