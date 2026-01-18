@@ -302,18 +302,22 @@ export class GameEngine {
           // Old format: base 20, +10 per upgrade. Convert to level.
           this.state.upgrades.carryCapacity = Math.floor((cap - 10) / 10) + 1;
         }
-        // Always ensure carryCapacity is valid (1-6), default to 1 if invalid
-        if (typeof this.state.upgrades.carryCapacity !== 'number' ||
-            isNaN(this.state.upgrades.carryCapacity) ||
-            this.state.upgrades.carryCapacity < 1) {
-          this.state.upgrades.carryCapacity = 1;
-        } else if (this.state.upgrades.carryCapacity > 6) {
-          this.state.upgrades.carryCapacity = 6;
-        }
       }
+
+      // Ensure all upgrades are at least 1
+      if (this.state.upgrades.axePower < 1) this.state.upgrades.axePower = 1;
+      if (this.state.upgrades.moveSpeed < 1) this.state.upgrades.moveSpeed = 1;
+      if (this.state.upgrades.chopSpeed < 1) this.state.upgrades.chopSpeed = 1;
+      if (this.state.upgrades.carryCapacity < 1) this.state.upgrades.carryCapacity = 1;
       if (data.workerUpgrades) {
         this.state.workerUpgrades = { ...this.state.workerUpgrades, ...data.workerUpgrades };
       }
+
+      // Ensure all worker upgrades are at least 1
+      if (this.state.workerUpgrades.restSpeed < 1) this.state.workerUpgrades.restSpeed = 1;
+      if (this.state.workerUpgrades.workDuration < 1) this.state.workerUpgrades.workDuration = 1;
+      if (this.state.workerUpgrades.workerSpeed < 1) this.state.workerUpgrades.workerSpeed = 1;
+      if (this.state.workerUpgrades.workerPower < 1) this.state.workerUpgrades.workerPower = 1;
 
       // Restore dead trees map
       if (data.deadTrees) {
