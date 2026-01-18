@@ -827,16 +827,21 @@ export class GameEngine {
     }
   }
 
+  private getWorkerCost(type: WorkerType, count: number): number {
+    const costs = type === WorkerType.Chopper ? CHOPPER_COSTS : COLLECTOR_COSTS;
+    if (count < costs.length) {
+      return costs[count];
+    }
+    // After the array, keep doubling from the last price
+    const lastCost = costs[costs.length - 1];
+    const extraWorkers = count - costs.length + 1;
+    return lastCost * Math.pow(2, extraWorkers);
+  }
+
   private hireWorker(type: WorkerType): void {
     // Count workers of this type
     const sameTypeCount = this.state.workers.filter(w => w.type === type).length;
-    const costs = type === WorkerType.Chopper ? CHOPPER_COSTS : COLLECTOR_COSTS;
-    const cost = costs[sameTypeCount];
-
-    if (cost === undefined) {
-      this.addFloatingText(this.state.player.position.x, this.state.player.position.y - 30, `MAX ${type.toUpperCase()}S!`, '#FF6600');
-      return;
-    }
+    const cost = this.getWorkerCost(type, sameTypeCount);
 
     if (this.state.money < cost) {
       this.addFloatingText(this.state.player.position.x, this.state.player.position.y - 30, 'Need $' + cost, '#FF4444');

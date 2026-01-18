@@ -454,11 +454,19 @@ function drawUI(
   ctx.font = '13px monospace';
   const chopperCount = state.workers.filter(w => w.type === WorkerType.Chopper).length;
   const collectorCount = state.workers.filter(w => w.type === WorkerType.Collector).length;
-  const nextChopperCost = CHOPPER_COSTS[chopperCount];
-  const nextCollectorCost = COLLECTOR_COSTS[collectorCount];
-  ctx.fillText(`Choppers: ${chopperCount} [J] ${nextChopperCost !== undefined ? '$' + nextChopperCost : 'MAX'}`, padding + 10, padding + 70);
+
+  // Calculate worker costs (doubles after array ends)
+  const getWorkerCost = (costs: number[], count: number) => {
+    if (count < costs.length) return costs[count];
+    const lastCost = costs[costs.length - 1];
+    return lastCost * Math.pow(2, count - costs.length + 1);
+  };
+  const nextChopperCost = getWorkerCost(CHOPPER_COSTS, chopperCount);
+  const nextCollectorCost = getWorkerCost(COLLECTOR_COSTS, collectorCount);
+
+  ctx.fillText(`Choppers: ${chopperCount} [J] $${nextChopperCost}`, padding + 10, padding + 70);
   ctx.fillStyle = '#88AAFF';
-  ctx.fillText(`Collectors: ${collectorCount} [K] ${nextCollectorCost !== undefined ? '$' + nextCollectorCost : 'MAX'}`, padding + 10, padding + 86);
+  ctx.fillText(`Collectors: ${collectorCount} [K] $${nextCollectorCost}`, padding + 10, padding + 86);
 
   // Stats
   ctx.fillStyle = '#aaa';
