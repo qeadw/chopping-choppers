@@ -735,8 +735,11 @@ export class GameEngine {
     // Sync deadTreesMap BEFORE chunks are deleted (save current dead tree state)
     this.syncDeadTreesMap();
 
-    // Update chunks (generate new ones, remove distant ones)
-    updateChunks(this.state.chunks, this.state.camera, this.config, this.state.worldSeed);
+    // Collect protected chunks (worker/waypoint areas that shouldn't be unloaded)
+    const protectedChunks = this.getProtectedChunks();
+
+    // Update chunks (generate new ones, remove distant ones, but keep protected chunks)
+    updateChunks(this.state.chunks, this.state.camera, this.config, this.state.worldSeed, protectedChunks);
 
     // Load 3x3 chunks around each worker so they can find trees/drops
     this.loadWorkerChunks();
@@ -1972,6 +1975,46 @@ export class GameEngine {
         }
       }
     }
+  }
+
+  // Get all chunk keys that should be protected from unloading (worker/waypoint areas)
+  private getProtectedChunks(): Set<string> {
+    const protected_ = new Set<string>();
+
+    // Protect 3x3 around each worker
+    for (const worker of this.state.workers) {
+      const centerX = Math.floor(worker.position.x / this.config.chunkSize);
+      const centerY = Math.floor(worker.position.y / this.config.chunkSize);
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          protected_.add(`${centerX + dx},${centerY + dy}`);
+        }
+      }
+    }
+
+    // Protect 3x3 around each waypoint
+    for (const waypoint of this.state.waypoints) {
+      const centerX = Math.floor(waypoint.x / this.config.chunkSize);
+      const centerY = Math.floor(waypoint.y / this.config.chunkSize);
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          protected_.add(`${centerX + dx},${centerY + dy}`);
+        }
+      }
+    }
+
+    // Protect 3x3 around player waypoint
+    if (this.state.playerWaypoint) {
+      const centerX = Math.floor(this.state.playerWaypoint.x / this.config.chunkSize);
+      const centerY = Math.floor(this.state.playerWaypoint.y / this.config.chunkSize);
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          protected_.add(`${centerX + dx},${centerY + dy}`);
+        }
+      }
+    }
+
+    return protected_;
   }
 
   // Get config for click handling

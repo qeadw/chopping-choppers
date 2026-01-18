@@ -214,7 +214,8 @@ export function updateChunks(
   chunks: Map<string, Chunk>,
   camera: Camera,
   config: GameConfig,
-  worldSeed: number = 0
+  worldSeed: number = 0,
+  protectedChunks: Set<string> = new Set()
 ): void {
   const visibleChunks = getVisibleChunks(camera, config);
   const visibleKeys = new Set(visibleChunks.map(c => chunkKey(c.chunkX, c.chunkY)));
@@ -227,12 +228,15 @@ export function updateChunks(
     }
   }
 
-  // Remove distant chunks (keep some buffer)
+  // Remove distant chunks (keep some buffer), but never delete protected chunks
   const maxDistance = config.renderDistance + 2;
   const centerChunkX = Math.floor((camera.x + camera.width / 2) / config.chunkSize);
   const centerChunkY = Math.floor((camera.y + camera.height / 2) / config.chunkSize);
 
   for (const [key, chunk] of chunks) {
+    // Never delete protected chunks (worker/waypoint chunks)
+    if (protectedChunks.has(key)) continue;
+
     const dx = Math.abs(chunk.x - centerChunkX);
     const dy = Math.abs(chunk.y - centerChunkY);
     if (dx > maxDistance || dy > maxDistance) {
