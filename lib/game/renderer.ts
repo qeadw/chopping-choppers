@@ -563,10 +563,10 @@ function drawUI(
     let yOffset = 34;
 
     if (chopper) {
-      const effSpeed = Math.round(chopper.speed * (1 + (workerUpgrades.workerSpeed - 1) * 0.2));
-      const effDamage = chopper.chopPower * (1 + (effectivePower - 1) * 0.2);
-      const effRest = (chopper.baseRestTime / (1 + (workerUpgrades.restSpeed - 1) * 0.2)).toFixed(1);
-      const effCap = Math.floor(chopper.carryCapacity * (1 + (effectivePower - 1) * 0.2));
+      const effSpeed = Math.round(chopper.speed * Math.pow(1.2, workerUpgrades.workerSpeed - 1));
+      const effDamage = chopper.chopPower * Math.pow(1.2, effectivePower - 1);
+      const effRest = (chopper.baseRestTime / Math.pow(1.2, workerUpgrades.restSpeed - 1)).toFixed(1);
+      const effCap = Math.floor(chopper.carryCapacity * Math.pow(1.2, effectivePower - 1));
 
       ctx.fillStyle = '#5A9C5A';
       ctx.fillText('CHOPPERS:', workerPanelX + 10, workerPanelY + yOffset);
@@ -579,9 +579,9 @@ function drawUI(
     }
 
     if (collector) {
-      const effSpeed = Math.round(collector.speed * (1 + (workerUpgrades.workerSpeed - 1) * 0.2));
-      const effRest = (collector.baseRestTime / (1 + (workerUpgrades.restSpeed - 1) * 0.2)).toFixed(1);
-      const effCap = Math.floor(collector.carryCapacity * (1 + (effectivePower - 1) * 0.2));
+      const effSpeed = Math.round(collector.speed * Math.pow(1.2, workerUpgrades.workerSpeed - 1));
+      const effRest = (collector.baseRestTime / Math.pow(1.2, workerUpgrades.restSpeed - 1)).toFixed(1);
+      const effCap = Math.floor(collector.carryCapacity * Math.pow(1.2, effectivePower - 1));
 
       ctx.fillStyle = '#88AAFF';
       ctx.fillText('COLLECTORS:', workerPanelX + 10, workerPanelY + yOffset);

@@ -878,7 +878,7 @@ export class GameEngine {
       }
 
       // Calculate effective speed with upgrades (20% per level)
-      const effectiveSpeed = worker.speed * (1 + (workerUpgrades.workerSpeed - 1) * 0.2);
+      const effectiveSpeed = worker.speed * Math.pow(1.2, workerUpgrades.workerSpeed - 1);
 
       // Calculate effective power level for 20% multipliers
       const effectivePower = workerUpgrades.workerPower;
@@ -903,7 +903,7 @@ export class GameEngine {
             }
           } else if (isCollector) {
             // Collectors only look for wood drops to collect
-            const collectorCapacity = Math.floor(worker.carryCapacity * (1 + (effectivePower - 1) * 0.2));
+            const collectorCapacity = Math.floor(worker.carryCapacity * Math.pow(1.2, effectivePower - 1));
             if (worker.wood < collectorCapacity) {
               const nearbyDrop = this.findNearestWoodDrop(worker.position.x, worker.position.y, 400);
               if (nearbyDrop) {
@@ -981,7 +981,7 @@ export class GameEngine {
           // Chop the tree
           if (worker.chopTimer <= 0) {
             worker.chopTimer = 0.6; // Worker chop cooldown
-            const chopDamage = worker.chopPower * (1 + (effectivePower - 1) * 0.2);  // 20% more damage per level
+            const chopDamage = worker.chopPower * Math.pow(1.2, effectivePower - 1);  // 1.2x damage per level
             const wasDestroyed = damageTree(worker.targetTree, chopDamage, this.config);
 
             // Drain stamina when chopping
@@ -1052,7 +1052,7 @@ export class GameEngine {
           }
 
           // Pick up wood - power upgrade increases carry capacity by 20% per level
-          const effectiveCapacity = Math.floor(worker.carryCapacity * (1 + (effectivePower - 1) * 0.2));
+          const effectiveCapacity = Math.floor(worker.carryCapacity * Math.pow(1.2, effectivePower - 1));
           const canCarry = Math.max(0, Math.min(worker.targetDrop.amount, effectiveCapacity - worker.wood));
           if (canCarry > 0) {
             worker.wood = Math.min(worker.wood + canCarry, effectiveCapacity); // Cap at max
@@ -1149,7 +1149,7 @@ export class GameEngine {
           worker.velocity.y = 0;
 
           // Recover stamina (20% faster per upgrade level)
-          const restMultiplier = 1 + (workerUpgrades.restSpeed - 1) * 0.2;
+          const restMultiplier = Math.pow(1.2, workerUpgrades.restSpeed - 1);
           const restRate = 20 * restMultiplier; // Stamina per second
           worker.stamina += restRate * deltaTime;
           worker.restTimer -= deltaTime * restMultiplier;

@@ -151,8 +151,8 @@ export interface Worker {
   baseRestTime: number;      // Base rest duration for this worker type
 }
 
-export const CHOPPER_COSTS = [100, 300, 700, 1500, 3000, 6000, 12000];
-export const COLLECTOR_COSTS = [150, 400, 900, 2000, 4000, 8000, 16000];
+export const CHOPPER_COSTS = [100, 150, 225, 350, 500, 750, 1100];
+export const COLLECTOR_COSTS = [150, 225, 350, 500, 750, 1100, 1650];
 
 export interface ChipperZone {
   x: number;
