@@ -118,6 +118,11 @@ export function render(
   // Draw UI (always at normal scale)
   drawUI(ctx, state, sprites, config);
 
+  // Draw player waypoint off-screen indicator when zoomed in
+  if (camera.zoom >= 0.5 && state.playerWaypoint) {
+    drawPlayerWaypointIndicator(ctx, state, effectiveCamera, scale);
+  }
+
   // Draw catch-up indicator if active
   if (catchUpTime > 0) {
     drawCatchUpIndicator(ctx, catchUpTime);
@@ -575,15 +580,16 @@ function drawUI(
     ctx.fillText(`Lv${upg.level}`, upgradeX + 130, y);
   });
 
-  // Bottom: Controls hint
+  // Bottom: Controls hint (two lines)
   ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-  const controlsY = ctx.canvas.height - 35;
-  ctx.fillRect(padding, controlsY, 620, 25);
+  const controlsY = ctx.canvas.height - 50;
+  ctx.fillRect(padding, controlsY, 620, 40);
 
   ctx.fillStyle = '#ccc';
   ctx.font = '11px monospace';
   ctx.textAlign = 'left';
-  ctx.fillText('WASD: Move | Click: Chop | E: Sell | J/K: Hire | C/V: Toggle workers | T: Timers | Scroll: Zoom', padding + 10, controlsY + 16);
+  ctx.fillText('WASD: Move | Click: Chop | E: Sell | J/K: Hire | C/V: Toggle workers | T: Timers | Scroll: Zoom', padding + 10, controlsY + 14);
+  ctx.fillText('Zoomed out: Q: Chopper waypoint | R: Collector waypoint | F: Player waypoint | X: Clear all', padding + 10, controlsY + 30);
 
   // Capacity warning
   const playerCapacity = Math.floor(10 * Math.pow(1.5, state.upgrades.carryCapacity - 1));
@@ -661,6 +667,7 @@ function drawWaypoints(
   camera: { x: number; y: number },
   scale: number
 ): void {
+  // Draw worker waypoints
   for (const waypoint of state.waypoints) {
     const screenX = (waypoint.x - camera.x) * scale;
     const screenY = (waypoint.y - camera.y) * scale;
@@ -691,6 +698,122 @@ function drawWaypoints(
     ctx.textAlign = 'center';
     ctx.fillText(symbol, screenX, screenY + 4 * scale);
   }
+
+  // Draw player waypoint (when zoomed out)
+  if (state.playerWaypoint) {
+    const screenX = (state.playerWaypoint.x - camera.x) * scale;
+    const screenY = (state.playerWaypoint.y - camera.y) * scale;
+    const color = '#FFD700';
+
+    // Draw waypoint marker (star shape)
+    ctx.beginPath();
+    ctx.arc(screenX, screenY, 10 * scale, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Draw symbol
+    ctx.fillStyle = '#000';
+    ctx.font = `bold ${14 * scale}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillText('★', screenX, screenY + 5 * scale);
+  }
+}
+
+function drawPlayerWaypointIndicator(
+  ctx: CanvasRenderingContext2D,
+  state: GameState,
+  camera: { x: number; y: number; width: number; height: number },
+  scale: number
+): void {
+  if (!state.playerWaypoint) return;
+
+  const waypointScreenX = (state.playerWaypoint.x - camera.x) * scale;
+  const waypointScreenY = (state.playerWaypoint.y - camera.y) * scale;
+  const canvasWidth = ctx.canvas.width;
+  const canvasHeight = ctx.canvas.height;
+  const margin = 60;
+
+  // Check if waypoint is on screen
+  if (waypointScreenX >= margin && waypointScreenX <= canvasWidth - margin &&
+      waypointScreenY >= margin && waypointScreenY <= canvasHeight - margin) {
+    // Waypoint is on screen - draw a small marker at its position
+    ctx.beginPath();
+    ctx.arc(waypointScreenX, waypointScreenY, 12, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255, 215, 0, 0.7)';
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = '#000';
+    ctx.font = 'bold 14px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('★', waypointScreenX, waypointScreenY + 5);
+    return;
+  }
+
+  // Waypoint is off screen - draw indicator on edge
+  const centerX = canvasWidth / 2;
+  const centerY = canvasHeight / 2;
+  const dx = waypointScreenX - centerX;
+  const dy = waypointScreenY - centerY;
+  const angle = Math.atan2(dy, dx);
+
+  // Calculate position on screen edge
+  let edgeX: number, edgeY: number;
+  const halfWidth = canvasWidth / 2 - margin;
+  const halfHeight = canvasHeight / 2 - margin;
+
+  // Find intersection with screen edge
+  const tanAngle = Math.tan(angle);
+  if (Math.abs(dx) * halfHeight > Math.abs(dy) * halfWidth) {
+    // Hits left or right edge
+    edgeX = dx > 0 ? canvasWidth - margin : margin;
+    edgeY = centerY + (edgeX - centerX) * tanAngle;
+  } else {
+    // Hits top or bottom edge
+    edgeY = dy > 0 ? canvasHeight - margin : margin;
+    edgeX = centerX + (edgeY - centerY) / tanAngle;
+  }
+
+  // Clamp to screen
+  edgeX = Math.max(margin, Math.min(canvasWidth - margin, edgeX));
+  edgeY = Math.max(margin, Math.min(canvasHeight - margin, edgeY));
+
+  // Calculate distance
+  const worldDx = state.playerWaypoint.x - state.player.position.x;
+  const worldDy = state.playerWaypoint.y - state.player.position.y;
+  const distance = Math.sqrt(worldDx * worldDx + worldDy * worldDy);
+
+  // Draw arrow pointing toward waypoint
+  ctx.save();
+  ctx.translate(edgeX, edgeY);
+  ctx.rotate(angle);
+
+  // Arrow shape
+  ctx.beginPath();
+  ctx.moveTo(15, 0);
+  ctx.lineTo(-10, -10);
+  ctx.lineTo(-5, 0);
+  ctx.lineTo(-10, 10);
+  ctx.closePath();
+  ctx.fillStyle = '#FFD700';
+  ctx.fill();
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.restore();
+
+  // Draw distance text
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+  ctx.fillRect(edgeX - 30, edgeY + 15, 60, 20);
+  ctx.fillStyle = '#FFD700';
+  ctx.font = 'bold 12px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(`${Math.round(distance)}`, edgeX, edgeY + 29);
 }
 
 function drawChunkOverlay(
@@ -840,8 +963,18 @@ function drawChunkOverlay(
 
     // Show waypoint mode if active
     if (waypointMode !== null) {
-      const modeName = waypointMode === WaypointType.Chopper ? 'CHOPPER' : 'COLLECTOR';
-      const modeColor = waypointMode === WaypointType.Chopper ? '#5A9C5A' : '#88AAFF';
+      let modeName: string;
+      let modeColor: string;
+      if (waypointMode === WaypointType.Chopper) {
+        modeName = 'CHOPPER';
+        modeColor = '#5A9C5A';
+      } else if (waypointMode === WaypointType.Collector) {
+        modeName = 'COLLECTOR';
+        modeColor = '#88AAFF';
+      } else {
+        modeName = 'PLAYER';
+        modeColor = '#FFD700';
+      }
       ctx.fillStyle = modeColor;
       ctx.fillText(`Placing ${modeName} waypoint - Click to place`, ctx.canvas.width / 2, ctx.canvas.height - 60);
     } else {
@@ -851,7 +984,7 @@ function drawChunkOverlay(
 
     ctx.fillStyle = '#AAAAAA';
     ctx.font = '10px monospace';
-    ctx.fillText('Q: Chopper waypoint | R: Collector waypoint | X: Clear waypoints', ctx.canvas.width / 2, ctx.canvas.height - 43);
+    ctx.fillText('Q: Chopper | R: Collector | F: Player waypoint | X: Clear all', ctx.canvas.width / 2, ctx.canvas.height - 43);
   }
 }
 

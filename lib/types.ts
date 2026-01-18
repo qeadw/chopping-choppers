@@ -219,6 +219,7 @@ export const WORKER_UPGRADE_COSTS = {
 export enum WaypointType {
   Chopper = 'chopper',
   Collector = 'collector',
+  Player = 'player',
 }
 
 export interface Waypoint {
@@ -254,6 +255,7 @@ export interface GameState {
   choppersEnabled: boolean;  // Whether choppers are active
   collectorsEnabled: boolean; // Whether collectors are active
   waypoints: Waypoint[];  // Worker waypoints for directing them
+  playerWaypoint: { x: number; y: number } | null;  // Player navigation waypoint
 }
 
 export interface SpriteSheet {

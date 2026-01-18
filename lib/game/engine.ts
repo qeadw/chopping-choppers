@@ -176,6 +176,7 @@ export class GameEngine {
       choppersEnabled: true,
       collectorsEnabled: true,
       waypoints: [],
+      playerWaypoint: null,
     };
 
     // Load saved progress
@@ -236,9 +237,18 @@ export class GameEngine {
           this.waypointPlacementMode = WaypointType.Collector;
           this.addFloatingText(this.state.player.position.x, this.state.player.position.y - 30, 'Click to place COLLECTOR waypoint', '#88AAFF');
         }
+      } else if (key === 'f' && this.state.camera.zoom <= 0.15) {
+        // Toggle player waypoint placement mode
+        if (this.waypointPlacementMode === WaypointType.Player) {
+          this.waypointPlacementMode = null;
+        } else {
+          this.waypointPlacementMode = WaypointType.Player;
+          this.addFloatingText(this.state.player.position.x, this.state.player.position.y - 30, 'Click to place PLAYER waypoint', '#FFD700');
+        }
       } else if (key === 'x' && this.state.camera.zoom <= 0.15) {
         // Clear all waypoints
         this.state.waypoints = [];
+        this.state.playerWaypoint = null;
         this.addFloatingText(this.state.player.position.x, this.state.player.position.y - 30, 'Waypoints cleared', '#AAAAAA');
       }
     };
@@ -284,17 +294,23 @@ export class GameEngine {
 
       // Check if in waypoint placement mode
       if (this.waypointPlacementMode !== null) {
-        // Place waypoint
-        const waypoint: Waypoint = {
-          id: `waypoint_${waypointIdCounter++}`,
-          x: worldX,
-          y: worldY,
-          type: this.waypointPlacementMode,
-        };
-        this.state.waypoints.push(waypoint);
-        const color = this.waypointPlacementMode === WaypointType.Chopper ? '#5A9C5A' : '#88AAFF';
-        const typeName = this.waypointPlacementMode === WaypointType.Chopper ? 'Chopper' : 'Collector';
-        this.addFloatingText(worldX, worldY, `${typeName} waypoint placed`, color);
+        if (this.waypointPlacementMode === WaypointType.Player) {
+          // Player waypoint - only one, replaces existing
+          this.state.playerWaypoint = { x: worldX, y: worldY };
+          this.addFloatingText(worldX, worldY, 'Player waypoint placed', '#FFD700');
+        } else {
+          // Worker waypoint
+          const waypoint: Waypoint = {
+            id: `waypoint_${waypointIdCounter++}`,
+            x: worldX,
+            y: worldY,
+            type: this.waypointPlacementMode,
+          };
+          this.state.waypoints.push(waypoint);
+          const color = this.waypointPlacementMode === WaypointType.Chopper ? '#5A9C5A' : '#88AAFF';
+          const typeName = this.waypointPlacementMode === WaypointType.Chopper ? 'Chopper' : 'Collector';
+          this.addFloatingText(worldX, worldY, `${typeName} waypoint placed`, color);
+        }
         return;
       }
 
@@ -405,6 +421,7 @@ export class GameEngine {
         choppersEnabled: this.state.choppersEnabled,
         collectorsEnabled: this.state.collectorsEnabled,
         waypoints: this.state.waypoints.map(w => ({ x: w.x, y: w.y, type: w.type })),
+        playerWaypoint: this.state.playerWaypoint,
       };
       localStorage.setItem(SAVE_KEY, JSON.stringify(saveData));
     } catch (e) {
@@ -553,6 +570,11 @@ export class GameEngine {
           y: w.y,
           type: w.type as WaypointType,
         }));
+      }
+
+      // Restore player waypoint
+      if (data.playerWaypoint) {
+        this.state.playerWaypoint = data.playerWaypoint;
       }
 
       console.log('Progress loaded!');
@@ -1306,7 +1328,8 @@ export class GameEngine {
 
           // Chop the tree
           if (worker.chopTimer <= 0) {
-            worker.chopTimer = 0.6; // Worker chop cooldown
+            // Worker chop cooldown - 5% faster per Work Duration level (compounding)
+            worker.chopTimer = 0.6 * Math.pow(0.95, this.state.workerUpgrades.workDuration - 1);
             const chopDamage = worker.chopPower * Math.pow(1.2, effectivePower - 1);  // 1.2x damage per level
             const wasDestroyed = damageTree(worker.targetTree, chopDamage, this.config);
 
@@ -1537,7 +1560,7 @@ export class GameEngine {
         this.handleTreeCollisions(worker.position, 5);
       }
 
-      // Stuck detection for collectors
+      // Stuck detection for collectors - phase through trees
       if (isCollector && worker.state !== WorkerState.Resting && worker.state !== WorkerState.Idle) {
         const dx = worker.position.x - worker.lastPosition.x;
         const dy = worker.position.y - worker.lastPosition.y;
@@ -1547,11 +1570,51 @@ export class GameEngine {
         if (movedDist < 0.5 * deltaTime && (Math.abs(worker.velocity.x) > 1 || Math.abs(worker.velocity.y) > 1)) {
           worker.stuckTimer += deltaTime;
 
-          // After 10 seconds stuck, enable phasing for 1 second
-          if (worker.stuckTimer >= 10) {
+          // After 3 seconds stuck, enable phasing for 1 second
+          if (worker.stuckTimer >= 3) {
             worker.phaseTimer = 1;
             worker.stuckTimer = 0;
             this.addFloatingText(worker.position.x, worker.position.y - 20, '*phase*', '#88FFFF');
+          }
+        } else {
+          // Reset stuck timer if moving normally
+          worker.stuckTimer = 0;
+        }
+      }
+
+      // Stuck detection for choppers heading to waypoints - break blocking trees
+      const chopperWaypoints = this.state.waypoints.filter(w => w.type === WaypointType.Chopper);
+      if (isChopper && chopperWaypoints.length > 0 && worker.state === WorkerState.MovingToTree) {
+        const dx = worker.position.x - worker.lastPosition.x;
+        const dy = worker.position.y - worker.lastPosition.y;
+        const movedDist = Math.sqrt(dx * dx + dy * dy);
+
+        // If barely moved but has velocity, increment stuck timer
+        if (movedDist < 0.5 * deltaTime && (Math.abs(worker.velocity.x) > 1 || Math.abs(worker.velocity.y) > 1)) {
+          worker.stuckTimer += deltaTime;
+
+          // After 2 seconds stuck, target the nearest blocking tree
+          if (worker.stuckTimer >= 2) {
+            worker.stuckTimer = 0;
+            // Find the nearest tree to the worker (blocking tree)
+            let nearestBlockingTree: Tree | null = null;
+            let nearestBlockingDist = 50; // Only consider very close trees as blocking
+            for (const chunk of this.state.chunks.values()) {
+              for (const tree of chunk.trees) {
+                if (tree.isDead) continue;
+                const treeDx = tree.x - worker.position.x;
+                const treeDy = tree.y - worker.position.y;
+                const treeDist = Math.sqrt(treeDx * treeDx + treeDy * treeDy);
+                if (treeDist < nearestBlockingDist) {
+                  nearestBlockingDist = treeDist;
+                  nearestBlockingTree = tree;
+                }
+              }
+            }
+            if (nearestBlockingTree && nearestBlockingTree !== worker.targetTree) {
+              worker.targetTree = nearestBlockingTree;
+              this.addFloatingText(worker.position.x, worker.position.y - 20, '*clearing path*', '#5A9C5A');
+            }
           }
         } else {
           // Reset stuck timer if moving normally
