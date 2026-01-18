@@ -166,7 +166,8 @@ export function damageTree(tree: Tree, damage: number, config: GameConfig): bool
   if (tree.health <= 0) {
     tree.isDead = true;
     tree.health = 0;
-    tree.respawnTimer = config.treeRespawnTime;
+    // Rarer trees take longer to respawn (10% more per tier)
+    tree.respawnTimer = config.treeRespawnTime * Math.pow(1.1, tree.type);
     return true; // Tree was chopped down
   }
 
