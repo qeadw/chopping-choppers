@@ -1630,12 +1630,30 @@ export class GameEngine {
 
   private findNearestTreeForWorker(worker: Worker): Tree | null {
     let nearest: Tree | null = null;
-    let nearestDist = 300; // Worker search range
+    let nearestDist = Infinity;
 
     // Get chopper waypoints
     const chopperWaypoints = this.state.waypoints.filter(w => w.type === WaypointType.Chopper);
+    const hasWaypoints = chopperWaypoints.length > 0;
+
+    // If waypoints exist, get the chunks they're in
+    const waypointChunks = new Set<string>();
+    if (hasWaypoints) {
+      for (const wp of chopperWaypoints) {
+        const chunkX = Math.floor(wp.x / this.config.chunkSize);
+        const chunkY = Math.floor(wp.y / this.config.chunkSize);
+        waypointChunks.add(`${chunkX},${chunkY}`);
+      }
+    }
 
     for (const chunk of this.state.chunks.values()) {
+      const chunkKey = `${chunk.x},${chunk.y}`;
+
+      // If waypoints exist, ONLY consider trees in waypoint chunks
+      if (hasWaypoints && !waypointChunks.has(chunkKey)) {
+        continue;
+      }
+
       for (const tree of chunk.trees) {
         if (tree.isDead) continue;
 
@@ -1647,23 +1665,10 @@ export class GameEngine {
 
         const dx = tree.x - worker.position.x;
         const dy = tree.y - worker.position.y;
-        let dist = Math.sqrt(dx * dx + dy * dy);
+        const dist = Math.sqrt(dx * dx + dy * dy);
 
-        // If there are waypoints, prioritize trees near waypoints
-        if (chopperWaypoints.length > 0) {
-          // Find distance to nearest waypoint
-          let nearestWaypointDist = Infinity;
-          for (const wp of chopperWaypoints) {
-            const wpDx = tree.x - wp.x;
-            const wpDy = tree.y - wp.y;
-            const wpDist = Math.sqrt(wpDx * wpDx + wpDy * wpDy);
-            nearestWaypointDist = Math.min(nearestWaypointDist, wpDist);
-          }
-          // Trees near waypoints get priority (reduce effective distance)
-          if (nearestWaypointDist < 400) {
-            dist = dist * 0.3; // Much more attractive
-          }
-        }
+        // Without waypoints, limit search range to 300
+        if (!hasWaypoints && dist > 300) continue;
 
         if (dist < nearestDist) {
           nearestDist = dist;
