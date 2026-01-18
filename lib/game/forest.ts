@@ -86,8 +86,7 @@ export function generateChunk(chunkX: number, chunkY: number, config: GameConfig
       continue;
     }
 
-    // Weighted tree type selection (each type is half as common as previous)
-    // 50%, 25%, 12.5%, 6.25%, 3.125%, 1.5625%, 0.78%, 0.39%, 0.2%, 0.1%
+    // Weighted tree type selection (common trees halve, rare trees are 10x rarer each)
     const typeRoll = rng.next();
     let type: TreeType;
     if (typeRoll < 0.5) {
@@ -108,8 +107,18 @@ export function generateChunk(chunkX: number, chunkY: number, config: GameConfig
       type = TreeType.GiantRedwood;     // 0.39%
     } else if (typeRoll < 0.998046875) {
       type = TreeType.AncientOak;       // 0.2%
+    } else if (typeRoll < 0.999) {
+      type = TreeType.MagicTree;        // 0.1%
+    } else if (typeRoll < 0.9999) {
+      type = TreeType.CrystalTree;      // 0.01% (1 in 10,000)
+    } else if (typeRoll < 0.99999) {
+      type = TreeType.VoidTree;         // 0.001% (1 in 100,000)
+    } else if (typeRoll < 0.999999) {
+      type = TreeType.CosmicTree;       // 0.0001% (1 in 1,000,000)
+    } else if (typeRoll < 0.9999999) {
+      type = TreeType.DivineTree;       // 0.00001% (1 in 10,000,000)
     } else {
-      type = TreeType.MagicTree;        // 0.2% - extremely rare!
+      type = TreeType.WorldTree;        // 0.000001% (1 in 100,000,000) - LEGENDARY!
     }
 
     // Skip if would overlap with existing trees

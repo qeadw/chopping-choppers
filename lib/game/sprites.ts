@@ -83,6 +83,53 @@ const COLORS = {
     glow: '#E0D0FF',
     sparkle: '#FFFFFF',
   },
+  crystal: {
+    darkest: '#1A4A5A',
+    dark: '#2A7A9A',
+    base: '#4ABADD',
+    light: '#7ADAFF',
+    highlight: '#AAEEFF',
+    glow: '#CCFFFF',
+    sparkle: '#FFFFFF',
+  },
+  void: {
+    darkest: '#0A0010',
+    dark: '#1A0030',
+    base: '#2A0050',
+    light: '#4A1080',
+    highlight: '#6A30A0',
+    energy: '#AA00FF',
+    core: '#FF00FF',
+  },
+  cosmic: {
+    darkest: '#050520',
+    dark: '#0A0A40',
+    base: '#151560',
+    light: '#2A2A90',
+    highlight: '#4040C0',
+    star: '#FFFF00',
+    nebula: '#FF66FF',
+  },
+  divine: {
+    darkest: '#8B6914',
+    dark: '#B8860B',
+    base: '#DAA520',
+    light: '#FFD700',
+    highlight: '#FFEC8B',
+    glow: '#FFFACD',
+    halo: '#FFFFFF',
+  },
+  world: {
+    darkest: '#0A3A0A',
+    dark: '#1A5A1A',
+    base: '#2A8A2A',
+    light: '#4ABA4A',
+    highlight: '#6AEA6A',
+    rainbow1: '#FF0000',
+    rainbow2: '#00FF00',
+    rainbow3: '#0000FF',
+    golden: '#FFD700',
+  },
   player: {
     skin: '#FFDAB9',
     skinShadow: '#E5B894',
@@ -683,6 +730,366 @@ function createMagicTreeSprite(): HTMLCanvasElement {
       setPixel(ctx, x, y, glow);
     }
   }
+
+  return canvas;
+}
+
+function createCrystalTreeSprite(): HTMLCanvasElement {
+  const canvas = createCanvas(20, 32);
+  const ctx = canvas.getContext('2d')!;
+  const { darkest, dark, base, light, highlight, glow, sparkle } = COLORS.crystal;
+
+  // Crystal trunk (semi-transparent ice)
+  for (let y = 20; y < 32; y++) {
+    setPixel(ctx, 8, y, darkest);
+    setPixel(ctx, 9, y, dark);
+    setPixel(ctx, 10, y, base);
+    setPixel(ctx, 11, y, light);
+  }
+
+  // Crystal formations (angular, geometric)
+  // Main crystal spire
+  for (let y = 0; y < 22; y++) {
+    const width = Math.max(1, 10 - Math.floor(y / 2));
+    const startX = 10 - Math.floor(width / 2);
+    for (let x = startX; x < startX + width; x++) {
+      const relX = (x - startX) / width;
+      let color: string;
+      if (relX < 0.3) color = dark;
+      else if (relX > 0.7) color = highlight;
+      else color = y % 4 < 2 ? base : light;
+      setPixel(ctx, x, y, color);
+    }
+  }
+
+  // Add sparkle effects
+  const sparkles = [[8, 3], [12, 5], [7, 8], [13, 10], [9, 14], [11, 2], [6, 12]];
+  sparkles.forEach(([x, y]) => setPixel(ctx, x, y, sparkle));
+
+  // Glow around base
+  for (let x = 6; x <= 14; x++) {
+    setPixel(ctx, x, 19, glow);
+  }
+
+  return canvas;
+}
+
+function createVoidTreeSprite(): HTMLCanvasElement {
+  const canvas = createCanvas(24, 36);
+  const ctx = canvas.getContext('2d')!;
+  const { darkest, dark, base, light, highlight, energy, core } = COLORS.void;
+
+  // Twisted dark trunk
+  for (let y = 22; y < 36; y++) {
+    const twist = Math.sin(y * 0.3) * 2;
+    setPixel(ctx, 10 + twist, y, darkest);
+    setPixel(ctx, 11 + twist, y, dark);
+    setPixel(ctx, 12 + twist, y, dark);
+    setPixel(ctx, 13 + twist, y, base);
+  }
+
+  // Void canopy - dark with purple energy veins
+  for (let y = 0; y < 24; y++) {
+    for (let x = 0; x < 24; x++) {
+      const dx = x - 12;
+      const dy = y - 10;
+      const dist = Math.sqrt(dx * dx * 0.7 + dy * dy);
+      if (dist < 11) {
+        let color: string;
+        if (dist < 3) color = core;
+        else if (dist < 5) color = energy;
+        else if (dx < -3) color = darkest;
+        else if (dx > 3) color = light;
+        else color = base;
+        setPixel(ctx, x, y, color);
+      }
+    }
+  }
+
+  // Energy tendrils
+  const tendrils = [[4, 15], [20, 14], [6, 20], [18, 19], [3, 10], [21, 11]];
+  tendrils.forEach(([x, y]) => setPixel(ctx, x, y, energy));
+
+  return canvas;
+}
+
+function createCosmicTreeSprite(): HTMLCanvasElement {
+  const canvas = createCanvas(22, 34);
+  const ctx = canvas.getContext('2d')!;
+  const { darkest, dark, base, light, highlight, star, nebula } = COLORS.cosmic;
+
+  // Ethereal trunk (starlight)
+  for (let y = 20; y < 34; y++) {
+    setPixel(ctx, 9, y, dark);
+    setPixel(ctx, 10, y, base);
+    setPixel(ctx, 11, y, light);
+    setPixel(ctx, 12, y, highlight);
+  }
+
+  // Cosmic canopy filled with stars
+  for (let y = 0; y < 22; y++) {
+    for (let x = 0; x < 22; x++) {
+      const dx = x - 11;
+      const dy = y - 10;
+      const dist = Math.sqrt(dx * dx * 0.8 + dy * dy);
+      if (dist < 10) {
+        let color: string;
+        if (dx < -3 && dy > 0) color = darkest;
+        else if (dx > 3 && dy < 0) color = highlight;
+        else color = dy < 0 ? light : base;
+        setPixel(ctx, x, y, color);
+      }
+    }
+  }
+
+  // Scattered stars
+  const stars = [[5, 4], [16, 3], [8, 8], [14, 6], [10, 2], [6, 12], [15, 10], [12, 5], [4, 9]];
+  stars.forEach(([x, y]) => setPixel(ctx, x, y, star));
+
+  // Nebula wisps
+  const nebulas = [[3, 7], [18, 8], [7, 14], [14, 15]];
+  nebulas.forEach(([x, y]) => setPixel(ctx, x, y, nebula));
+
+  return canvas;
+}
+
+function createDivineTreeSprite(): HTMLCanvasElement {
+  const canvas = createCanvas(28, 40);
+  const ctx = canvas.getContext('2d')!;
+  const { darkest, dark, base, light, highlight, glow, halo } = COLORS.divine;
+
+  // Golden trunk
+  for (let y = 24; y < 40; y++) {
+    setPixel(ctx, 12, y, darkest);
+    setPixel(ctx, 13, y, dark);
+    setPixel(ctx, 14, y, base);
+    setPixel(ctx, 15, y, light);
+  }
+
+  // Radiant golden canopy
+  for (let y = 2; y < 26; y++) {
+    for (let x = 2; x < 26; x++) {
+      const dx = x - 14;
+      const dy = y - 12;
+      const dist = Math.sqrt(dx * dx * 0.7 + dy * dy);
+      if (dist < 12) {
+        let color: string;
+        if (dist < 4) color = glow;
+        else if (dist < 6) color = highlight;
+        else if (dx < -4) color = dark;
+        else if (dx > 4) color = highlight;
+        else color = dy < 0 ? light : base;
+        setPixel(ctx, x, y, color);
+      }
+    }
+  }
+
+  // Divine halo ring at top
+  for (let angle = 0; angle < Math.PI * 2; angle += 0.25) {
+    const x = Math.round(14 + Math.cos(angle) * 12);
+    const y = Math.round(12 + Math.sin(angle) * 10);
+    if (x >= 0 && x < 28 && y >= 0 && y < 26) {
+      setPixel(ctx, x, y, halo);
+    }
+  }
+
+  // Light rays emanating
+  const rays = [[2, 6], [25, 5], [1, 14], [26, 15], [4, 22], [23, 21]];
+  rays.forEach(([x, y]) => setPixel(ctx, x, y, halo));
+
+  return canvas;
+}
+
+function createWorldTreeSprite(): HTMLCanvasElement {
+  const canvas = createCanvas(36, 52);
+  const ctx = canvas.getContext('2d')!;
+  const { darkest, dark, base, light, highlight, rainbow1, rainbow2, rainbow3, golden } = COLORS.world;
+  const trunk = COLORS.trunk;
+
+  // Massive ancient trunk
+  for (let y = 32; y < 52; y++) {
+    const width = y > 45 ? 14 : 10;
+    const startX = 18 - width / 2;
+    for (let x = startX; x < startX + width; x++) {
+      const relX = (x - startX) / width;
+      if (relX < 0.25) setPixel(ctx, x, y, trunk.dark);
+      else if (relX > 0.75) setPixel(ctx, x, y, trunk.highlight);
+      else setPixel(ctx, x, y, trunk.base);
+    }
+  }
+
+  // Enormous legendary canopy
+  for (let y = 0; y < 36; y++) {
+    for (let x = 0; x < 36; x++) {
+      const dx = x - 18;
+      const dy = y - 16;
+      const dist = Math.sqrt(dx * dx * 0.6 + dy * dy * 0.8);
+      const noise = Math.sin(x * 1.5) * 0.1 + Math.cos(y * 1.3) * 0.1;
+      if (dist + noise < 16) {
+        let color: string;
+        if (dist < 5) color = highlight;
+        else if (dx < -6) color = darkest;
+        else if (dx > 6) color = highlight;
+        else if (dy < -4) color = light;
+        else color = base;
+        setPixel(ctx, x, y, color);
+      }
+    }
+  }
+
+  // Rainbow energy throughout (Yggdrasil-style)
+  const rainbowSpots = [
+    [8, 8, rainbow1], [10, 5, rainbow2], [12, 10, rainbow3],
+    [24, 7, rainbow1], [26, 12, rainbow2], [22, 4, rainbow3],
+    [16, 3, rainbow1], [20, 6, rainbow2], [14, 8, rainbow3],
+  ];
+  rainbowSpots.forEach(([x, y, c]) => setPixel(ctx, x as number, y as number, c as string));
+
+  // Golden leaves scattered
+  const goldenLeaves = [[6, 14], [30, 13], [18, 2], [10, 20], [26, 19]];
+  goldenLeaves.forEach(([x, y]) => setPixel(ctx, x, y, golden));
+
+  return canvas;
+}
+
+// Stump sprites for new trees
+function createCrystalStumpSprite(): HTMLCanvasElement {
+  const canvas = createCanvas(20, 12);
+  const ctx = canvas.getContext('2d')!;
+  const { darkest, dark, base, light, glow, sparkle } = COLORS.crystal;
+
+  // Shattered crystal base
+  for (let y = 4; y < 12; y++) {
+    setPixel(ctx, 8, y, darkest);
+    setPixel(ctx, 9, y, dark);
+    setPixel(ctx, 10, y, base);
+    setPixel(ctx, 11, y, light);
+  }
+
+  // Broken crystal shards on top
+  setPixel(ctx, 8, 3, dark);
+  setPixel(ctx, 10, 2, base);
+  setPixel(ctx, 12, 3, light);
+  setPixel(ctx, 9, 4, glow);
+  setPixel(ctx, 11, 4, glow);
+
+  // Sparkles
+  setPixel(ctx, 7, 5, sparkle);
+  setPixel(ctx, 13, 6, sparkle);
+
+  return canvas;
+}
+
+function createVoidStumpSprite(): HTMLCanvasElement {
+  const canvas = createCanvas(24, 12);
+  const ctx = canvas.getContext('2d')!;
+  const { darkest, dark, base, energy, core } = COLORS.void;
+
+  // Dark void stump
+  for (let y = 4; y < 12; y++) {
+    setPixel(ctx, 10, y, darkest);
+    setPixel(ctx, 11, y, dark);
+    setPixel(ctx, 12, y, dark);
+    setPixel(ctx, 13, y, base);
+  }
+
+  // Void energy leaking from top
+  setPixel(ctx, 11, 3, energy);
+  setPixel(ctx, 12, 3, core);
+  setPixel(ctx, 11, 4, core);
+  setPixel(ctx, 12, 4, energy);
+
+  // Energy tendrils
+  setPixel(ctx, 8, 6, energy);
+  setPixel(ctx, 15, 7, energy);
+
+  return canvas;
+}
+
+function createCosmicStumpSprite(): HTMLCanvasElement {
+  const canvas = createCanvas(22, 12);
+  const ctx = canvas.getContext('2d')!;
+  const { dark, base, light, star } = COLORS.cosmic;
+
+  // Ethereal stump
+  for (let y = 4; y < 12; y++) {
+    setPixel(ctx, 9, y, dark);
+    setPixel(ctx, 10, y, base);
+    setPixel(ctx, 11, y, light);
+    setPixel(ctx, 12, y, light);
+  }
+
+  // Stars still visible in the remains
+  setPixel(ctx, 10, 3, star);
+  setPixel(ctx, 11, 4, star);
+  setPixel(ctx, 8, 6, star);
+  setPixel(ctx, 13, 7, star);
+
+  return canvas;
+}
+
+function createDivineStumpSprite(): HTMLCanvasElement {
+  const canvas = createCanvas(28, 14);
+  const ctx = canvas.getContext('2d')!;
+  const { darkest, dark, base, light, glow, halo } = COLORS.divine;
+
+  // Golden stump
+  for (let y = 4; y < 14; y++) {
+    setPixel(ctx, 12, y, darkest);
+    setPixel(ctx, 13, y, dark);
+    setPixel(ctx, 14, y, base);
+    setPixel(ctx, 15, y, light);
+  }
+
+  // Lingering divine glow
+  for (let x = 11; x <= 16; x++) {
+    setPixel(ctx, x, 3, glow);
+    setPixel(ctx, x, 4, light);
+  }
+
+  // Halo remnants
+  setPixel(ctx, 10, 5, halo);
+  setPixel(ctx, 17, 5, halo);
+  setPixel(ctx, 9, 8, halo);
+  setPixel(ctx, 18, 8, halo);
+
+  return canvas;
+}
+
+function createWorldStumpSprite(): HTMLCanvasElement {
+  const canvas = createCanvas(36, 16);
+  const ctx = canvas.getContext('2d')!;
+  const trunk = COLORS.trunk;
+  const { rainbow1, rainbow2, rainbow3, golden } = COLORS.world;
+  const wood = COLORS.wood;
+
+  // Massive legendary stump
+  for (let y = 4; y < 16; y++) {
+    const width = y > 12 ? 16 : 12;
+    const startX = 18 - width / 2;
+    for (let x = startX; x < startX + width; x++) {
+      const relX = (x - startX) / width;
+      if (relX < 0.25) setPixel(ctx, x, y, trunk.dark);
+      else if (relX > 0.75) setPixel(ctx, x, y, trunk.highlight);
+      else setPixel(ctx, x, y, trunk.base);
+    }
+  }
+
+  // Top surface with many rings
+  for (let x = 12; x <= 24; x++) {
+    setPixel(ctx, x, 2, wood.dark);
+    setPixel(ctx, x, 3, wood.base);
+    setPixel(ctx, x, 4, wood.light);
+  }
+
+  // Rainbow energy still visible
+  setPixel(ctx, 14, 3, rainbow1);
+  setPixel(ctx, 18, 3, rainbow2);
+  setPixel(ctx, 22, 3, rainbow3);
+
+  // Golden remnants
+  setPixel(ctx, 16, 4, golden);
+  setPixel(ctx, 20, 4, golden);
 
   return canvas;
 }
@@ -1695,6 +2102,11 @@ export function createSpriteSheet(): SpriteSheet {
       createGiantRedwoodSprite(),   // 7 - GiantRedwood
       createAncientOakSprite(),     // 8 - AncientOak
       createMagicTreeSprite(),      // 9 - MagicTree
+      createCrystalTreeSprite(),    // 10 - CrystalTree
+      createVoidTreeSprite(),       // 11 - VoidTree
+      createCosmicTreeSprite(),     // 12 - CosmicTree
+      createDivineTreeSprite(),     // 13 - DivineTree
+      createWorldTreeSprite(),      // 14 - WorldTree
     ],
     treeStumps: [
       createSmallStumpSprite(),     // 0 - SmallPine
@@ -1707,6 +2119,11 @@ export function createSpriteSheet(): SpriteSheet {
       createRedwoodStumpSprite(),   // 7 - GiantRedwood
       createAncientStumpSprite(),   // 8 - AncientOak
       createMagicStumpSprite(),     // 9 - MagicTree
+      createCrystalStumpSprite(),   // 10 - CrystalTree
+      createVoidStumpSprite(),      // 11 - VoidTree
+      createCosmicStumpSprite(),    // 12 - CosmicTree
+      createDivineStumpSprite(),    // 13 - DivineTree
+      createWorldStumpSprite(),     // 14 - WorldTree
     ],
     player: createPlayerSprite(),
     playerChop: createPlayerChopSprite(),
