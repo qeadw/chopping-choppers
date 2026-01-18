@@ -177,10 +177,13 @@ export class GameEngine {
     };
     window.addEventListener('keydown', this.upgradeKeyHandler);
 
-    // Setup hire worker key handler (J = Chopper, K = Collector, T = Toggle timers)
+    // Setup hire worker key handler (J = Chopper, K = Collector, T = Toggle timers, G = Reset carry cap)
     this.hireKeyHandler = (e: KeyboardEvent) => {
       if (e.key.toLowerCase() === 'j') {
         this.hireWorker(WorkerType.Chopper);
+      } else if (e.key.toLowerCase() === 'g') {
+        this.state.upgrades.carryCapacity = 1;
+        this.saveProgress();
       } else if (e.key.toLowerCase() === 'k') {
         this.hireWorker(WorkerType.Collector);
       } else if (e.key.toLowerCase() === 't') {
