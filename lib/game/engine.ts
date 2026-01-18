@@ -342,7 +342,7 @@ export class GameEngine {
       facingRight: true,
       carryCapacity: isCollector ? 2 : 5,
       speed: isCollector ? 9 : 10,
-      chopPower: isCollector ? 0 : 0.125,
+      chopPower: isCollector ? 0 : 1,
       treesChopped: 0,
       stamina: baseMaxStamina * workerUpgrades.workDuration,
       maxStamina: baseMaxStamina * workerUpgrades.workDuration,
@@ -428,8 +428,8 @@ export class GameEngine {
     // Start chop animation
     startChop(this.state.player, this.config, this.state.upgrades);
 
-    // Deal damage to tree (base power divided by 8)
-    const damage = this.state.upgrades.axePower / 8;
+    // Deal damage to tree
+    const damage = this.state.upgrades.axePower;
     const wasDestroyed = damageTree(nearestTree, damage, this.config);
 
     // Spawn wood particles on hit
@@ -777,7 +777,7 @@ export class GameEngine {
       facingRight: true,
       carryCapacity: isCollector ? 2 : 5,   // Collectors carry less
       speed: isCollector ? 9 : 10,          // Both workers very slow
-      chopPower: isCollector ? 0 : 0.125,   // Choppers much weaker
+      chopPower: isCollector ? 0 : 1,   // Choppers much weaker
       // Fatigue system
       treesChopped: 0,
       stamina: baseMaxStamina,
@@ -805,10 +805,10 @@ export class GameEngine {
         worker.chopTimer -= deltaTime;
       }
 
-      // Calculate effective speed with upgrades
-      const effectiveSpeed = worker.speed * workerUpgrades.workerSpeed;
+      // Calculate effective speed with upgrades (20% per level)
+      const effectiveSpeed = worker.speed * (1 + (workerUpgrades.workerSpeed - 1) * 0.2);
 
-      // Calculate effective power (chop damage or carry capacity bonus)
+      // Calculate effective power level for 20% multipliers
       const effectivePower = workerUpgrades.workerPower;
 
       const isChopper = worker.type === WorkerType.Chopper;
@@ -831,7 +831,8 @@ export class GameEngine {
             }
           } else if (isCollector) {
             // Collectors only look for wood drops to collect
-            if (worker.wood < worker.carryCapacity + effectivePower * 5) {
+            const collectorCapacity = Math.floor(worker.carryCapacity * (1 + (effectivePower - 1) * 0.2));
+            if (worker.wood < collectorCapacity) {
               const nearbyDrop = this.findNearestWoodDrop(worker.position.x, worker.position.y, 400);
               if (nearbyDrop) {
                 worker.targetDrop = nearbyDrop;
@@ -908,7 +909,7 @@ export class GameEngine {
           // Chop the tree
           if (worker.chopTimer <= 0) {
             worker.chopTimer = 0.6; // Worker chop cooldown
-            const chopDamage = worker.chopPower + effectivePower;  // Power upgrade adds damage
+            const chopDamage = worker.chopPower * (1 + (effectivePower - 1) * 0.2);  // 20% more damage per level
             const wasDestroyed = damageTree(worker.targetTree, chopDamage, this.config);
 
             // Drain stamina when chopping
@@ -978,11 +979,11 @@ export class GameEngine {
             break;
           }
 
-          // Pick up wood - power upgrade increases carry capacity
-          const effectiveCapacity = worker.carryCapacity + effectivePower * 5;
-          const canCarry = Math.min(worker.targetDrop.amount, effectiveCapacity - worker.wood);
+          // Pick up wood - power upgrade increases carry capacity by 20% per level
+          const effectiveCapacity = Math.floor(worker.carryCapacity * (1 + (effectivePower - 1) * 0.2));
+          const canCarry = Math.max(0, Math.min(worker.targetDrop.amount, effectiveCapacity - worker.wood));
           if (canCarry > 0) {
-            worker.wood += canCarry;
+            worker.wood = Math.min(worker.wood + canCarry, effectiveCapacity); // Cap at max
             worker.targetDrop.amount -= canCarry;
             this.addFloatingText(worker.position.x, worker.position.y - 20, `+${canCarry}`, '#8B4513');
             // Drain stamina based on amount collected
@@ -1075,10 +1076,11 @@ export class GameEngine {
           worker.velocity.x = 0;
           worker.velocity.y = 0;
 
-          // Recover stamina
-          const restRate = 20 * workerUpgrades.restSpeed; // Stamina per second
+          // Recover stamina (20% faster per upgrade level)
+          const restMultiplier = 1 + (workerUpgrades.restSpeed - 1) * 0.2;
+          const restRate = 20 * restMultiplier; // Stamina per second
           worker.stamina += restRate * deltaTime;
-          worker.restTimer -= deltaTime * workerUpgrades.restSpeed;
+          worker.restTimer -= deltaTime * restMultiplier;
 
           if (worker.restTimer <= 0 && worker.stamina >= worker.maxStamina) {
             worker.stamina = worker.maxStamina;

@@ -46,18 +46,18 @@ export enum TreeType {
   MagicTree = 9,
 }
 
-// Wood value, health, and hitbox by tree type
+// Wood value, health, and hitbox by tree type (health x8 for 1 damage per hit base)
 export const TREE_STATS: Record<TreeType, { health: number; woodDrop: number; hitboxRadius: number }> = {
-  [TreeType.SmallPine]: { health: 2, woodDrop: 1, hitboxRadius: 6 },
-  [TreeType.LargePine]: { health: 4, woodDrop: 3, hitboxRadius: 8 },
-  [TreeType.Oak]: { health: 5, woodDrop: 4, hitboxRadius: 10 },
-  [TreeType.DeadTree]: { health: 1, woodDrop: 1, hitboxRadius: 5 },
-  [TreeType.Birch]: { health: 3, woodDrop: 2, hitboxRadius: 6 },
-  [TreeType.Willow]: { health: 6, woodDrop: 5, hitboxRadius: 12 },
-  [TreeType.CherryBlossom]: { health: 8, woodDrop: 8, hitboxRadius: 10 },
-  [TreeType.GiantRedwood]: { health: 15, woodDrop: 15, hitboxRadius: 14 },
-  [TreeType.AncientOak]: { health: 20, woodDrop: 25, hitboxRadius: 16 },
-  [TreeType.MagicTree]: { health: 30, woodDrop: 50, hitboxRadius: 12 },
+  [TreeType.SmallPine]: { health: 16, woodDrop: 1, hitboxRadius: 6 },
+  [TreeType.LargePine]: { health: 32, woodDrop: 3, hitboxRadius: 8 },
+  [TreeType.Oak]: { health: 40, woodDrop: 4, hitboxRadius: 10 },
+  [TreeType.DeadTree]: { health: 8, woodDrop: 1, hitboxRadius: 5 },
+  [TreeType.Birch]: { health: 24, woodDrop: 2, hitboxRadius: 6 },
+  [TreeType.Willow]: { health: 48, woodDrop: 5, hitboxRadius: 12 },
+  [TreeType.CherryBlossom]: { health: 64, woodDrop: 8, hitboxRadius: 10 },
+  [TreeType.GiantRedwood]: { health: 120, woodDrop: 15, hitboxRadius: 14 },
+  [TreeType.AncientOak]: { health: 160, woodDrop: 25, hitboxRadius: 16 },
+  [TreeType.MagicTree]: { health: 240, woodDrop: 50, hitboxRadius: 12 },
 };
 
 export interface WoodDrop {
