@@ -89,6 +89,10 @@ export function generateChunk(chunkX: number, chunkY: number, config: GameConfig
     // Weighted tree type selection (common trees halve, rare trees are 10x rarer each)
     const typeRoll = rng.next();
     let type: TreeType;
+
+    // Calculate chunk distance from spawn for legendary tree restrictions
+    const chunkDistFromSpawn = Math.max(Math.abs(chunkX), Math.abs(chunkY));
+
     if (typeRoll < 0.5) {
       type = TreeType.SmallPine;        // 50%
     } else if (typeRoll < 0.75) {
@@ -109,16 +113,19 @@ export function generateChunk(chunkX: number, chunkY: number, config: GameConfig
       type = TreeType.AncientOak;       // 0.2%
     } else if (typeRoll < 0.999) {
       type = TreeType.MagicTree;        // 0.1%
-    } else if (typeRoll < 0.9999) {
-      type = TreeType.CrystalTree;      // 0.01% (1 in 10,000)
-    } else if (typeRoll < 0.99999) {
-      type = TreeType.VoidTree;         // 0.001% (1 in 100,000)
-    } else if (typeRoll < 0.999999) {
-      type = TreeType.CosmicTree;       // 0.0001% (1 in 1,000,000)
-    } else if (typeRoll < 0.9999999) {
-      type = TreeType.DivineTree;       // 0.00001% (1 in 10,000,000)
+    } else if (typeRoll < 0.9999 && chunkDistFromSpawn > 1) {
+      type = TreeType.CrystalTree;      // 0.01% - not within 1 chunk of spawn
+    } else if (typeRoll < 0.99999 && chunkDistFromSpawn > 2) {
+      type = TreeType.VoidTree;         // 0.001% - not within 2 chunks of spawn
+    } else if (typeRoll < 0.999999 && chunkDistFromSpawn > 3) {
+      type = TreeType.CosmicTree;       // 0.0001% - not within 3 chunks of spawn
+    } else if (typeRoll < 0.9999999 && chunkDistFromSpawn > 4) {
+      type = TreeType.DivineTree;       // 0.00001% - not within 4 chunks of spawn
+    } else if (typeRoll >= 0.9999999 && chunkDistFromSpawn > 5) {
+      type = TreeType.WorldTree;        // 0.000001% - not within 5 chunks of spawn - LEGENDARY!
     } else {
-      type = TreeType.WorldTree;        // 0.000001% (1 in 100,000,000) - LEGENDARY!
+      // Fallback to MagicTree if legendary tree can't spawn due to distance
+      type = TreeType.MagicTree;
     }
 
     // Skip if would overlap with existing trees
