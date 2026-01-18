@@ -19,7 +19,7 @@ import {
 } from '../types';
 import { createPlayer, updatePlayer, createCamera, updateCamera, canChop, startChop } from './player';
 import { createInputState, setupInputHandlers } from './input';
-import { updateChunks, updateTrees, damageTree } from './forest';
+import { updateChunks, updateTrees, damageTree, generateChunk } from './forest';
 import { render } from './renderer';
 import { createSpriteSheet } from './sprites';
 
@@ -73,6 +73,9 @@ interface SaveData {
   worldSeed?: number;
   woodDrops?: WoodDropSaveData[];
   clearedChunks?: string[];  // Chunks that were fully cleared at once
+  platinumChunks?: string[]; // Chunks cleared in challenge mode
+  challengeChunks?: string[]; // Chunks with challenge mode enabled
+  chunkToggleCooldowns?: { key: string; time: number }[]; // Cooldown timers
 }
 
 export class GameEngine {
@@ -88,6 +91,7 @@ export class GameEngine {
   private upgradeKeyHandler: (e: KeyboardEvent) => void;
   private hireKeyHandler: (e: KeyboardEvent) => void;
   private wheelHandler: (e: WheelEvent) => void;
+  private clickHandler: (e: MouseEvent) => void;
   private beforeUnloadHandler: () => void;
   private saveIntervalId: number = 0;
   private deadTreesMap: Map<string, number> = new Map(); // tree ID -> respawn timer
@@ -156,6 +160,9 @@ export class GameEngine {
       showStumpTimers: true,
       worldSeed: this.generateWorldSeed(),
       clearedChunks: new Set<string>(),
+      platinumChunks: new Set<string>(),
+      challengeChunks: new Set<string>(),
+      chunkToggleCooldowns: new Map<string, number>(),
     };
 
     // Load saved progress
@@ -207,6 +214,36 @@ export class GameEngine {
       }
     };
     this.canvas.addEventListener('wheel', this.wheelHandler, { passive: false });
+
+    // Setup click handler for chunk challenge toggle
+    this.clickHandler = (e: MouseEvent) => {
+      // Only works when fully zoomed out
+      if (this.state.camera.zoom > 0.15) return;
+
+      // Convert screen coordinates to world coordinates
+      const rect = this.canvas.getBoundingClientRect();
+      const screenX = e.clientX - rect.left;
+      const screenY = e.clientY - rect.top;
+
+      // Calculate effective camera view
+      const effectiveWidth = this.state.camera.width / this.state.camera.zoom;
+      const effectiveHeight = this.state.camera.height / this.state.camera.zoom;
+      const effectiveCameraX = this.state.player.position.x - effectiveWidth / 2;
+      const effectiveCameraY = this.state.player.position.y - effectiveHeight / 2;
+
+      // Convert to world coordinates
+      const scale = this.config.pixelScale * this.state.camera.zoom;
+      const worldX = effectiveCameraX + screenX / scale;
+      const worldY = effectiveCameraY + screenY / scale;
+
+      // Find which chunk was clicked
+      const chunkX = Math.floor(worldX / this.config.chunkSize);
+      const chunkY = Math.floor(worldY / this.config.chunkSize);
+
+      // Try to toggle challenge mode
+      this.toggleChunkChallenge(chunkX, chunkY);
+    };
+    this.canvas.addEventListener('click', this.clickHandler);
   }
 
   start(): void {
@@ -229,6 +266,7 @@ export class GameEngine {
     window.removeEventListener('keydown', this.hireKeyHandler);
     window.removeEventListener('beforeunload', this.beforeUnloadHandler);
     this.canvas.removeEventListener('wheel', this.wheelHandler);
+    this.canvas.removeEventListener('click', this.clickHandler);
   }
 
   private saveProgress(): void {
@@ -270,6 +308,9 @@ export class GameEngine {
         worldSeed: this.state.worldSeed,
         woodDrops,
         clearedChunks: Array.from(this.state.clearedChunks),
+        platinumChunks: Array.from(this.state.platinumChunks),
+        challengeChunks: Array.from(this.state.challengeChunks),
+        chunkToggleCooldowns: Array.from(this.state.chunkToggleCooldowns.entries()).map(([key, time]) => ({ key, time })),
       };
       localStorage.setItem(SAVE_KEY, JSON.stringify(saveData));
     } catch (e) {
@@ -385,6 +426,23 @@ export class GameEngine {
         this.state.clearedChunks = new Set(data.clearedChunks);
       }
 
+      // Restore platinum chunks
+      if (data.platinumChunks && data.platinumChunks.length > 0) {
+        this.state.platinumChunks = new Set(data.platinumChunks);
+      }
+
+      // Restore challenge chunks
+      if (data.challengeChunks && data.challengeChunks.length > 0) {
+        this.state.challengeChunks = new Set(data.challengeChunks);
+      }
+
+      // Restore chunk toggle cooldowns
+      if (data.chunkToggleCooldowns && data.chunkToggleCooldowns.length > 0) {
+        for (const { key, time } of data.chunkToggleCooldowns) {
+          this.state.chunkToggleCooldowns.set(key, time);
+        }
+      }
+
       console.log('Progress loaded!');
     } catch (e) {
       console.warn('Failed to load progress:', e);
@@ -482,6 +540,9 @@ export class GameEngine {
     // Update chunks (generate new ones, remove distant ones)
     updateChunks(this.state.chunks, this.state.camera, this.config, this.state.worldSeed);
 
+    // Load 3x3 chunks around each worker so they can find trees/drops
+    this.loadWorkerChunks();
+
     // Apply saved dead tree state to newly generated chunks
     this.applyDeadTreesToChunks();
 
@@ -490,6 +551,16 @@ export class GameEngine {
 
     // Sync deadTreesMap with actual tree state (handle respawns)
     this.syncDeadTreesMap();
+
+    // Update chunk toggle cooldowns
+    for (const [key, time] of this.state.chunkToggleCooldowns) {
+      const newTime = time - deltaTime;
+      if (newTime <= 0) {
+        this.state.chunkToggleCooldowns.delete(key);
+      } else {
+        this.state.chunkToggleCooldowns.set(key, newTime);
+      }
+    }
 
     // Handle chopping
     // After chop speed level 5, allow holding to auto-swing
@@ -539,8 +610,9 @@ export class GameEngine {
     this.spawnWoodParticles(nearestTree.x, nearestTree.y - 20);
 
     if (wasDestroyed) {
-      // Tree was chopped down - spawn wood drop
-      const woodAmount = TREE_STATS[nearestTree.type].woodDrop;
+      // Tree was chopped down - spawn wood drop (2x in challenge chunks)
+      const baseWood = TREE_STATS[nearestTree.type].woodDrop;
+      const woodAmount = this.isTreeInChallengeChunk(nearestTree.x, nearestTree.y) ? baseWood * 2 : baseWood;
       this.spawnWoodDrop(nearestTree.x, nearestTree.y, woodAmount);
       this.state.totalWoodChopped += woodAmount;
 
@@ -946,10 +1018,31 @@ export class GameEngine {
             // Collectors only look for wood drops to collect
             const collectorCapacity = Math.floor(worker.carryCapacity * Math.pow(1.8, effectivePower - 1));
             if (worker.wood < collectorCapacity) {
-              const nearbyDrop = this.findNearestWoodDrop(worker.position.x, worker.position.y, 400);
+              // Search up to 800 range for wood drops
+              const nearbyDrop = this.findNearestWoodDrop(worker.position.x, worker.position.y, 800);
               if (nearbyDrop) {
                 worker.targetDrop = nearbyDrop;
                 worker.state = WorkerState.MovingToDrop;
+              } else {
+                // No drops found - if carrying any wood, go sell it
+                // Otherwise move toward chipper area to wait for drops
+                if (worker.wood > 0) {
+                  worker.state = WorkerState.ReturningToChipper;
+                } else {
+                  // Move toward chipper if too far away (more than 200 units)
+                  const dx = chipperCenterX - worker.position.x;
+                  const dy = chipperCenterY - worker.position.y;
+                  const dist = Math.sqrt(dx * dx + dy * dy);
+                  if (dist > 200) {
+                    // Slowly drift toward chipper
+                    worker.velocity.x = (dx / dist) * effectiveSpeed * 0.5;
+                    worker.velocity.y = (dy / dist) * effectiveSpeed * 0.5;
+                    worker.facingRight = dx > 0;
+                  } else {
+                    worker.velocity.x = 0;
+                    worker.velocity.y = 0;
+                  }
+                }
               }
             } else {
               // Inventory full, go sell
@@ -1031,7 +1124,9 @@ export class GameEngine {
             this.spawnWoodParticles(worker.targetTree.x, worker.targetTree.y - 20);
 
             if (wasDestroyed) {
-              const woodAmount = TREE_STATS[worker.targetTree.type].woodDrop;
+              // 2x drops in challenge chunks
+              const baseWood = TREE_STATS[worker.targetTree.type].woodDrop;
+              const woodAmount = this.isTreeInChallengeChunk(worker.targetTree.x, worker.targetTree.y) ? baseWood * 2 : baseWood;
               this.spawnWoodDrop(worker.targetTree.x, worker.targetTree.y, woodAmount);
               this.state.totalWoodChopped += woodAmount;
               this.spawnTreeFallParticles(worker.targetTree.x, worker.targetTree.y);
@@ -1352,27 +1447,123 @@ export class GameEngine {
     return nearest;
   }
 
-  // Check if a chunk is now fully cleared (all trees dead) and mark it as gold-bordered
+  // Check if a chunk is now fully cleared (all trees dead) and mark it as gold/platinum bordered
   private checkChunkCleared(treeX: number, treeY: number): void {
     const chunkX = Math.floor(treeX / this.config.chunkSize);
     const chunkY = Math.floor(treeY / this.config.chunkSize);
     const key = `${chunkX},${chunkY}`;
-
-    // Don't check if already cleared
-    if (this.state.clearedChunks.has(key)) return;
 
     const chunk = this.state.chunks.get(key);
     if (!chunk) return;
 
     // Check if ALL trees in this chunk are dead
     const allDead = chunk.trees.every(tree => tree.isDead);
-    if (allDead) {
+    if (!allDead) return;
+
+    const centerX = chunkX * this.config.chunkSize + this.config.chunkSize / 2;
+    const centerY = chunkY * this.config.chunkSize + this.config.chunkSize / 2;
+
+    // Check if in challenge mode - upgrade to platinum
+    if (this.state.challengeChunks.has(key)) {
+      if (!this.state.platinumChunks.has(key)) {
+        this.state.platinumChunks.add(key);
+        this.addFloatingText(centerX, centerY, 'PLATINUM CHUNK!', '#E5E4E2');
+      }
+      // Disable challenge mode after clearing
+      this.state.challengeChunks.delete(key);
+    } else if (!this.state.clearedChunks.has(key) && !this.state.platinumChunks.has(key)) {
+      // First time clear - gold
       this.state.clearedChunks.add(key);
-      // Show celebratory text
-      const centerX = chunkX * this.config.chunkSize + this.config.chunkSize / 2;
-      const centerY = chunkY * this.config.chunkSize + this.config.chunkSize / 2;
       this.addFloatingText(centerX, centerY, 'CHUNK CLEARED!', '#FFD700');
     }
+  }
+
+  // Toggle challenge mode on a gold/platinum chunk (only when fully zoomed out)
+  public toggleChunkChallenge(chunkX: number, chunkY: number): boolean {
+    const key = `${chunkX},${chunkY}`;
+
+    // Can only toggle on gold or platinum chunks
+    if (!this.state.clearedChunks.has(key) && !this.state.platinumChunks.has(key)) {
+      return false;
+    }
+
+    // Check cooldown (5 minutes = 300 seconds)
+    const cooldown = this.state.chunkToggleCooldowns.get(key) || 0;
+    if (cooldown > 0) {
+      const centerX = chunkX * this.config.chunkSize + this.config.chunkSize / 2;
+      const centerY = chunkY * this.config.chunkSize + this.config.chunkSize / 2;
+      this.addFloatingText(centerX, centerY, `Wait ${Math.ceil(cooldown)}s`, '#FF4444');
+      return false;
+    }
+
+    const chunk = this.state.chunks.get(key);
+    const centerX = chunkX * this.config.chunkSize + this.config.chunkSize / 2;
+    const centerY = chunkY * this.config.chunkSize + this.config.chunkSize / 2;
+
+    if (this.state.challengeChunks.has(key)) {
+      // Turn OFF challenge mode
+      this.state.challengeChunks.delete(key);
+      this.addFloatingText(centerX, centerY, 'Challenge OFF', '#AAAAAA');
+    } else {
+      // Turn ON challenge mode
+      this.state.challengeChunks.add(key);
+      this.addFloatingText(centerX, centerY, 'CHALLENGE ON!', '#FF6600');
+    }
+
+    // Respawn all trees in this chunk with appropriate health
+    if (chunk) {
+      const isChallenge = this.state.challengeChunks.has(key);
+      for (const tree of chunk.trees) {
+        tree.isDead = false;
+        tree.respawnTimer = 0;
+        // Double health in challenge mode
+        tree.health = isChallenge ? tree.maxHealth * 2 : tree.maxHealth;
+      }
+    }
+
+    // Set 5 minute cooldown
+    this.state.chunkToggleCooldowns.set(key, 300);
+
+    return true;
+  }
+
+  // Check if a tree is in a challenge chunk (for 2x drops)
+  public isTreeInChallengeChunk(treeX: number, treeY: number): boolean {
+    const chunkX = Math.floor(treeX / this.config.chunkSize);
+    const chunkY = Math.floor(treeY / this.config.chunkSize);
+    const key = `${chunkX},${chunkY}`;
+    return this.state.challengeChunks.has(key);
+  }
+
+  // Load 3x3 chunks around each worker so they can always find trees/drops
+  private loadWorkerChunks(): void {
+    for (const worker of this.state.workers) {
+      const centerChunkX = Math.floor(worker.position.x / this.config.chunkSize);
+      const centerChunkY = Math.floor(worker.position.y / this.config.chunkSize);
+
+      // Load 3x3 grid around worker
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          const chunkX = centerChunkX + dx;
+          const chunkY = centerChunkY + dy;
+          const key = `${chunkX},${chunkY}`;
+
+          if (!this.state.chunks.has(key)) {
+            this.state.chunks.set(key, generateChunk(chunkX, chunkY, this.config, this.state.worldSeed));
+          }
+        }
+      }
+    }
+  }
+
+  // Get config for click handling
+  public getConfig(): GameConfig {
+    return this.config;
+  }
+
+  // Get state for click handling
+  public getState(): GameState {
+    return this.state;
   }
 
   private render(): void {

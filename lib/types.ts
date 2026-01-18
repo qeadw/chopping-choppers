@@ -232,6 +232,9 @@ export interface GameState {
   showStumpTimers: boolean;
   worldSeed: number;
   clearedChunks: Set<string>;  // Chunks that were fully cleared at once (gold bordered)
+  platinumChunks: Set<string>; // Chunks cleared in challenge mode (platinum bordered)
+  challengeChunks: Set<string>; // Chunks with challenge mode enabled (2x health, 2x drops)
+  chunkToggleCooldowns: Map<string, number>; // Cooldown timers for chunk toggles (5 min)
 }
 
 export interface SpriteSheet {

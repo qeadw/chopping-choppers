@@ -626,7 +626,7 @@ function drawChunkOverlay(
   ctx: CanvasRenderingContext2D,
   state: GameState,
   config: GameConfig,
-  camera: { x: number; y: number; width: number; height: number },
+  camera: { x: number; y: number; width: number; height: number; zoom: number },
   scale: number
 ): void {
   const { chunks } = state;
@@ -641,6 +641,9 @@ function drawChunkOverlay(
   ctx.font = `${Math.max(10, 12 * scale / 3)}px monospace`;
   ctx.textAlign = 'center';
 
+  // Check if fully zoomed out (for toggle hint)
+  const fullyZoomedOut = camera.zoom <= 0.15;
+
   for (let cx = startChunkX; cx <= endChunkX; cx++) {
     for (let cy = startChunkY; cy <= endChunkY; cy++) {
       const worldX = cx * chunkSize;
@@ -654,6 +657,12 @@ function drawChunkOverlay(
       const key = chunkKey(cx, cy);
       const chunk = chunks.get(key);
 
+      // Check chunk status
+      const isPlatinum = state.platinumChunks.has(key);
+      const isGold = state.clearedChunks.has(key);
+      const isChallenge = state.challengeChunks.has(key);
+      const cooldown = state.chunkToggleCooldowns.get(key) || 0;
+
       let color: string;
       let treeCount = 0;
 
@@ -666,6 +675,9 @@ function drawChunkOverlay(
         if (treeCount === 0) {
           // No trees left - green
           color = 'rgba(0, 255, 0, 0.3)';
+        } else if (isChallenge) {
+          // Challenge mode - orange tint
+          color = 'rgba(255, 100, 0, 0.4)';
         } else {
           // Has trees - red
           color = 'rgba(255, 0, 0, 0.3)';
@@ -676,12 +688,12 @@ function drawChunkOverlay(
       ctx.fillStyle = color;
       ctx.fillRect(screenX, screenY, screenW, screenH);
 
-      // Check if this chunk has been fully cleared (gold bordered)
-      const isCleared = state.clearedChunks.has(key);
-
-      // Draw chunk border - gold if cleared, white otherwise
-      if (isCleared) {
-        ctx.strokeStyle = '#FFD700';
+      // Draw chunk border - platinum > gold > white
+      if (isPlatinum) {
+        ctx.strokeStyle = '#E5E4E2';  // Platinum color
+        ctx.lineWidth = 4;
+      } else if (isGold) {
+        ctx.strokeStyle = '#FFD700';  // Gold color
         ctx.lineWidth = 3;
       } else {
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
@@ -689,24 +701,70 @@ function drawChunkOverlay(
       }
       ctx.strokeRect(screenX, screenY, screenW, screenH);
 
-      // Draw tree count or cleared indicator
+      // Draw tree count - always show for all chunks
       if (chunk) {
-        if (isCleared) {
+        // Color based on status
+        if (isPlatinum) {
+          ctx.fillStyle = '#E5E4E2';
+        } else if (isGold) {
           ctx.fillStyle = '#FFD700';
-          ctx.fillText(
-            '★',
-            screenX + screenW / 2,
-            screenY + screenH / 2 + 4
-          );
         } else {
           ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+        }
+        ctx.fillText(
+          `${treeCount}`,
+          screenX + screenW / 2,
+          screenY + screenH / 2 + 4
+        );
+
+        // Show challenge indicator if active
+        if (isChallenge) {
+          ctx.fillStyle = '#FF6600';
+          ctx.font = `bold ${Math.max(8, 10 * scale / 3)}px monospace`;
           ctx.fillText(
-            `${treeCount}`,
+            '2X',
             screenX + screenW / 2,
-            screenY + screenH / 2 + 4
+            screenY + screenH / 2 - 12
           );
+          ctx.font = `${Math.max(10, 12 * scale / 3)}px monospace`;
+        }
+
+        // Show cooldown timer if applicable and zoomed out enough
+        if (cooldown > 0 && fullyZoomedOut && (isGold || isPlatinum)) {
+          ctx.fillStyle = '#FF4444';
+          ctx.font = `${Math.max(8, 8 * scale / 3)}px monospace`;
+          const mins = Math.floor(cooldown / 60);
+          const secs = Math.ceil(cooldown % 60);
+          ctx.fillText(
+            `${mins}:${secs.toString().padStart(2, '0')}`,
+            screenX + screenW / 2,
+            screenY + screenH / 2 + 20
+          );
+          ctx.font = `${Math.max(10, 12 * scale / 3)}px monospace`;
+        }
+
+        // Show click hint for gold/platinum chunks when fully zoomed out
+        if (fullyZoomedOut && (isGold || isPlatinum) && cooldown <= 0 && !isChallenge) {
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+          ctx.font = `${Math.max(7, 7 * scale / 3)}px monospace`;
+          ctx.fillText(
+            'CLICK',
+            screenX + screenW / 2,
+            screenY + screenH / 2 + 18
+          );
+          ctx.font = `${Math.max(10, 12 * scale / 3)}px monospace`;
         }
       }
     }
+  }
+
+  // Show instruction at bottom when fully zoomed out
+  if (fullyZoomedOut) {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(ctx.canvas.width / 2 - 200, ctx.canvas.height - 60, 400, 25);
+    ctx.fillStyle = '#FFD700';
+    ctx.font = 'bold 12px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('Click gold/platinum chunks to toggle CHALLENGE mode (2x HP, 2x drops)', ctx.canvas.width / 2, ctx.canvas.height - 43);
   }
 }
