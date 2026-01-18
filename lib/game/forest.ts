@@ -86,29 +86,30 @@ export function generateChunk(chunkX: number, chunkY: number, config: GameConfig
       continue;
     }
 
-    // Weighted tree type selection (rarer trees have lower chances)
+    // Weighted tree type selection (each type is half as common as previous)
+    // 50%, 25%, 12.5%, 6.25%, 3.125%, 1.5625%, 0.78%, 0.39%, 0.2%, 0.1%
     const typeRoll = rng.next();
     let type: TreeType;
-    if (typeRoll < 0.25) {
-      type = TreeType.SmallPine;
-    } else if (typeRoll < 0.45) {
-      type = TreeType.LargePine;
-    } else if (typeRoll < 0.60) {
-      type = TreeType.Oak;
-    } else if (typeRoll < 0.70) {
-      type = TreeType.DeadTree;
-    } else if (typeRoll < 0.80) {
-      type = TreeType.Birch;
-    } else if (typeRoll < 0.88) {
-      type = TreeType.Willow;
-    } else if (typeRoll < 0.94) {
-      type = TreeType.CherryBlossom;
-    } else if (typeRoll < 0.97) {
-      type = TreeType.GiantRedwood;
-    } else if (typeRoll < 0.99) {
-      type = TreeType.AncientOak;
+    if (typeRoll < 0.5) {
+      type = TreeType.SmallPine;        // 50%
+    } else if (typeRoll < 0.75) {
+      type = TreeType.LargePine;        // 25%
+    } else if (typeRoll < 0.875) {
+      type = TreeType.Oak;              // 12.5%
+    } else if (typeRoll < 0.9375) {
+      type = TreeType.DeadTree;         // 6.25%
+    } else if (typeRoll < 0.96875) {
+      type = TreeType.Birch;            // 3.125%
+    } else if (typeRoll < 0.984375) {
+      type = TreeType.Willow;           // 1.56%
+    } else if (typeRoll < 0.9921875) {
+      type = TreeType.CherryBlossom;    // 0.78%
+    } else if (typeRoll < 0.99609375) {
+      type = TreeType.GiantRedwood;     // 0.39%
+    } else if (typeRoll < 0.998046875) {
+      type = TreeType.AncientOak;       // 0.2%
     } else {
-      type = TreeType.MagicTree;  // 1% chance - extremely rare!
+      type = TreeType.MagicTree;        // 0.2% - extremely rare!
     }
 
     // Skip if would overlap with existing trees
