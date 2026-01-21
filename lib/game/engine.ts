@@ -461,20 +461,20 @@ export class GameEngine {
         }
       }
 
-      // Ensure all upgrades are at least 1
-      if (this.state.upgrades.axePower < 1) this.state.upgrades.axePower = 1;
-      if (this.state.upgrades.moveSpeed < 1) this.state.upgrades.moveSpeed = 1;
-      if (this.state.upgrades.chopSpeed < 1) this.state.upgrades.chopSpeed = 1;
-      if (this.state.upgrades.carryCapacity < 1) this.state.upgrades.carryCapacity = 1;
+      // Ensure all upgrades are at least 1 (handle NaN, undefined, 0, or negative)
+      if (!this.state.upgrades.axePower || this.state.upgrades.axePower < 1) this.state.upgrades.axePower = 1;
+      if (!this.state.upgrades.moveSpeed || this.state.upgrades.moveSpeed < 1) this.state.upgrades.moveSpeed = 1;
+      if (!this.state.upgrades.chopSpeed || this.state.upgrades.chopSpeed < 1) this.state.upgrades.chopSpeed = 1;
+      if (!this.state.upgrades.carryCapacity || this.state.upgrades.carryCapacity < 1) this.state.upgrades.carryCapacity = 1;
       if (data.workerUpgrades) {
         this.state.workerUpgrades = { ...this.state.workerUpgrades, ...data.workerUpgrades };
       }
 
-      // Ensure all worker upgrades are at least 1
-      if (this.state.workerUpgrades.restSpeed < 1) this.state.workerUpgrades.restSpeed = 1;
-      if (this.state.workerUpgrades.workDuration < 1) this.state.workerUpgrades.workDuration = 1;
-      if (this.state.workerUpgrades.workerSpeed < 1) this.state.workerUpgrades.workerSpeed = 1;
-      if (this.state.workerUpgrades.workerPower < 1) this.state.workerUpgrades.workerPower = 1;
+      // Ensure all worker upgrades are at least 1 (handle NaN, undefined, 0, or negative)
+      if (!this.state.workerUpgrades.restSpeed || this.state.workerUpgrades.restSpeed < 1) this.state.workerUpgrades.restSpeed = 1;
+      if (!this.state.workerUpgrades.workDuration || this.state.workerUpgrades.workDuration < 1) this.state.workerUpgrades.workDuration = 1;
+      if (!this.state.workerUpgrades.workerSpeed || this.state.workerUpgrades.workerSpeed < 1) this.state.workerUpgrades.workerSpeed = 1;
+      if (!this.state.workerUpgrades.workerPower || this.state.workerUpgrades.workerPower < 1) this.state.workerUpgrades.workerPower = 1;
 
       // Restore dead trees map
       if (data.deadTrees) {
@@ -663,6 +663,7 @@ export class GameEngine {
       stuckTimer: 0,
       lastPosition: { ...startPos },
       phaseTimer: 0,
+      searchRadius: 0,
     };
 
     this.state.workers.push(worker);
@@ -733,9 +734,6 @@ export class GameEngine {
     // Update camera to follow player
     updateCamera(this.state.camera, this.state.player);
 
-    // Sync deadTreesMap BEFORE chunks are deleted (save current dead tree state)
-    this.syncDeadTreesMap();
-
     // Collect protected chunks (worker/waypoint areas that shouldn't be unloaded)
     const protectedChunks = this.getProtectedChunks();
 
@@ -745,8 +743,12 @@ export class GameEngine {
     // Load 3x3 chunks around each worker so they can find trees/drops
     this.loadWorkerChunks();
 
-    // Apply saved dead tree state to newly generated chunks
+    // Apply saved dead tree state to newly generated chunks BEFORE syncing
+    // This ensures newly loaded chunks get their dead trees marked before sync runs
     this.applyDeadTreesToChunks();
+
+    // Sync deadTreesMap after applying (now sync will only remove actually respawned trees)
+    this.syncDeadTreesMap();
 
     // Update tree respawn timers
     updateTrees(this.state.chunks, deltaTime, this.config);
@@ -1181,6 +1183,7 @@ export class GameEngine {
       stuckTimer: 0,
       lastPosition: { ...startPos },
       phaseTimer: 0,
+      searchRadius: 0,
     };
 
     this.state.workers.push(worker);
@@ -1257,17 +1260,30 @@ export class GameEngine {
             if (nearbyTree) {
               worker.targetTree = nearbyTree;
               worker.state = WorkerState.MovingToTree;
+              worker.searchRadius = 0; // Reset search radius on success
+            } else {
+              // Expand search radius up to 5 extra chunks
+              if (worker.searchRadius < 5) {
+                worker.searchRadius++;
+              }
             }
           } else if (isCollector) {
             // Collectors only look for wood drops to collect
             const collectorCapacity = Math.floor(worker.carryCapacity * Math.pow(1.8, effectivePower - 1));
             if (worker.wood < collectorCapacity) {
-              // Search up to 800 range for wood drops
-              const nearbyDrop = this.findNearestWoodDrop(worker.position.x, worker.position.y, 800);
+              // Search with expanding range based on searchRadius
+              const baseRange = 800;
+              const maxRange = baseRange + worker.searchRadius * this.config.chunkSize;
+              const nearbyDrop = this.findNearestWoodDrop(worker.position.x, worker.position.y, maxRange);
               if (nearbyDrop) {
                 worker.targetDrop = nearbyDrop;
                 worker.state = WorkerState.MovingToDrop;
+                worker.searchRadius = 0; // Reset search radius on success
               } else {
+                // Expand search radius up to 5 extra chunks
+                if (worker.searchRadius < 5) {
+                  worker.searchRadius++;
+                }
                 // No drops found - if carrying any wood, go sell it
                 // Otherwise move toward chipper area to wait for drops
                 if (worker.wood > 0) {
@@ -1724,8 +1740,10 @@ export class GameEngine {
         const dy = tree.y - worker.position.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
 
-        // Without waypoints, limit search range to 300
-        if (!hasWaypoints && dist > 300) continue;
+        // Without waypoints, limit search range based on worker's searchRadius
+        const baseRange = 300;
+        const maxRange = baseRange + worker.searchRadius * this.config.chunkSize;
+        if (!hasWaypoints && dist > maxRange) continue;
 
         if (dist < nearestDist) {
           nearestDist = dist;

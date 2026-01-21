@@ -163,6 +163,8 @@ export interface Worker {
   stuckTimer: number;        // How long the worker has been stuck
   lastPosition: Position;    // Position last frame for stuck detection
   phaseTimer: number;        // Time remaining to phase through trees
+  // Search expansion
+  searchRadius: number;      // Extra chunks to search (0-5)
 }
 
 export const CHOPPER_COSTS = [100, 150, 225, 350, 500, 750, 1100];
