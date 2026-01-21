@@ -453,8 +453,9 @@ export class GameEngine {
         this.state.upgrades = { ...this.state.upgrades, ...data.upgrades };
 
         // Migrate old carryCapacity format (stored as 20, 30, 40...) to new level format (1, 2, 3...)
+        // Old format started at 20 and incremented by 10. New format uses levels 1-6.
         const cap = this.state.upgrades.carryCapacity;
-        if (typeof cap === 'number' && cap >= 10) {
+        if (typeof cap === 'number' && cap >= 20) {
           // Old format: base 20, +10 per upgrade. Convert to level.
           this.state.upgrades.carryCapacity = Math.floor((cap - 10) / 10) + 1;
         }
@@ -652,7 +653,7 @@ export class GameEngine {
       chopTimer: 0,
       facingRight: true,
       carryCapacity: isCollector ? 2 : 5,
-      speed: isCollector ? 9 : 10,
+      speed: isCollector ? 18 : 20,
       chopPower: isCollector ? 0 : 1,
       treesChopped: 0,
       stamina: baseMaxStamina * workerUpgrades.workDuration,
@@ -1013,9 +1014,10 @@ export class GameEngine {
           break;
         case 'workDuration':
           workerUpgrades.workDuration++;
-          // Update all workers' max stamina
+          // Update all workers' max stamina (collectors have base 60, choppers have base 100)
           for (const worker of this.state.workers) {
-            worker.maxStamina = 100 * workerUpgrades.workDuration;
+            const baseStamina = worker.type === WorkerType.Collector ? 60 : 100;
+            worker.maxStamina = baseStamina * workerUpgrades.workDuration;
           }
           break;
         case 'workerSpeed':
@@ -1168,7 +1170,7 @@ export class GameEngine {
       chopTimer: 0,
       facingRight: true,
       carryCapacity: isCollector ? 2 : 5,   // Collectors carry less
-      speed: isCollector ? 9 : 10,          // Both workers very slow
+      speed: isCollector ? 18 : 20,         // Base worker speed
       chopPower: isCollector ? 0 : 1,   // Choppers much weaker
       // Fatigue system
       treesChopped: 0,
@@ -1275,7 +1277,7 @@ export class GameEngine {
                   const dx = chipperCenterX - worker.position.x;
                   const dy = chipperCenterY - worker.position.y;
                   const dist = Math.sqrt(dx * dx + dy * dy);
-                  if (dist > 200) {
+                  if (dist > 200 && dist > 0) {
                     // Slowly drift toward chipper
                     worker.velocity.x = (dx / dist) * effectiveSpeed * 0.5;
                     worker.velocity.y = (dy / dist) * effectiveSpeed * 0.5;
@@ -1323,7 +1325,7 @@ export class GameEngine {
             worker.state = WorkerState.Chopping;
             worker.velocity.x = 0;
             worker.velocity.y = 0;
-          } else {
+          } else if (treeDist > 0) {
             // Move toward tree
             worker.velocity.x = (treeDx / treeDist) * effectiveSpeed;
             worker.velocity.y = (treeDy / treeDist) * effectiveSpeed;
@@ -1419,7 +1421,7 @@ export class GameEngine {
             worker.state = WorkerState.Collecting;
             worker.velocity.x = 0;
             worker.velocity.y = 0;
-          } else {
+          } else if (moveDist > 0) {
             worker.velocity.x = (moveDx / moveDist) * effectiveSpeed;
             worker.velocity.y = (moveDy / moveDist) * effectiveSpeed;
             worker.facingRight = moveDx > 0;
@@ -1506,7 +1508,7 @@ export class GameEngine {
             worker.state = WorkerState.Selling;
             worker.velocity.x = 0;
             worker.velocity.y = 0;
-          } else {
+          } else if (chipDist > 0) {
             worker.velocity.x = (chipDx / chipDist) * effectiveSpeed;
             worker.velocity.y = (chipDy / chipDist) * effectiveSpeed;
             worker.facingRight = chipDx > 0;
@@ -1548,7 +1550,7 @@ export class GameEngine {
             worker.velocity.y = 0;
             worker.restTimer = worker.baseRestTime;
             this.addFloatingText(worker.position.x, worker.position.y - 20, 'Zzz...', '#88AAFF');
-          } else {
+          } else if (shackDist > 0) {
             worker.velocity.x = (shackDx / shackDist) * effectiveSpeed;
             worker.velocity.y = (shackDy / shackDist) * effectiveSpeed;
             worker.facingRight = shackDx > 0;
@@ -1610,9 +1612,8 @@ export class GameEngine {
         }
       }
 
-      // Stuck detection for choppers heading to waypoints - break blocking trees
-      const chopperWaypoints = this.state.waypoints.filter(w => w.type === WaypointType.Chopper);
-      if (isChopper && chopperWaypoints.length > 0 && worker.state === WorkerState.MovingToTree) {
+      // Stuck detection for choppers - break blocking trees
+      if (isChopper && worker.state === WorkerState.MovingToTree) {
         const dx = worker.position.x - worker.lastPosition.x;
         const dy = worker.position.y - worker.lastPosition.y;
         const movedDist = Math.sqrt(dx * dx + dy * dy);
@@ -1624,18 +1625,26 @@ export class GameEngine {
           // After 3 seconds stuck, target the nearest blocking tree
           if (worker.stuckTimer >= 3) {
             worker.stuckTimer = 0;
-            // Find the nearest tree to the worker (blocking tree)
+            // Find the nearest tree to the worker (blocking tree) - only search nearby chunks
             let nearestBlockingTree: Tree | null = null;
             let nearestBlockingDist = 50; // Only consider very close trees as blocking
-            for (const chunk of this.state.chunks.values()) {
-              for (const tree of chunk.trees) {
-                if (tree.isDead) continue;
-                const treeDx = tree.x - worker.position.x;
-                const treeDy = tree.y - worker.position.y;
-                const treeDist = Math.sqrt(treeDx * treeDx + treeDy * treeDy);
-                if (treeDist < nearestBlockingDist) {
-                  nearestBlockingDist = treeDist;
-                  nearestBlockingTree = tree;
+            const workerChunkX = Math.floor(worker.position.x / this.config.chunkSize);
+            const workerChunkY = Math.floor(worker.position.y / this.config.chunkSize);
+            // Only search 3x3 chunks around worker
+            for (let cdx = -1; cdx <= 1; cdx++) {
+              for (let cdy = -1; cdy <= 1; cdy++) {
+                const chunkKey = `${workerChunkX + cdx},${workerChunkY + cdy}`;
+                const chunk = this.state.chunks.get(chunkKey);
+                if (!chunk) continue;
+                for (const tree of chunk.trees) {
+                  if (tree.isDead) continue;
+                  const treeDx = tree.x - worker.position.x;
+                  const treeDy = tree.y - worker.position.y;
+                  const treeDist = Math.sqrt(treeDx * treeDx + treeDy * treeDy);
+                  if (treeDist < nearestBlockingDist) {
+                    nearestBlockingDist = treeDist;
+                    nearestBlockingTree = tree;
+                  }
                 }
               }
             }
@@ -1943,19 +1952,34 @@ export class GameEngine {
 
   // Load 3x3 chunks around each worker and waypoint so they can always find trees/drops
   private loadWorkerChunks(): void {
+    // Track which chunk centers we've already processed to avoid redundant work
+    const processedCenters = new Set<string>();
+
     // Load chunks around workers
     for (const worker of this.state.workers) {
-      this.loadChunksAround(worker.position.x, worker.position.y);
+      const centerKey = `${Math.floor(worker.position.x / this.config.chunkSize)},${Math.floor(worker.position.y / this.config.chunkSize)}`;
+      if (!processedCenters.has(centerKey)) {
+        processedCenters.add(centerKey);
+        this.loadChunksAround(worker.position.x, worker.position.y);
+      }
     }
 
     // Load chunks around worker waypoints
     for (const waypoint of this.state.waypoints) {
-      this.loadChunksAround(waypoint.x, waypoint.y);
+      const centerKey = `${Math.floor(waypoint.x / this.config.chunkSize)},${Math.floor(waypoint.y / this.config.chunkSize)}`;
+      if (!processedCenters.has(centerKey)) {
+        processedCenters.add(centerKey);
+        this.loadChunksAround(waypoint.x, waypoint.y);
+      }
     }
 
     // Load chunks around player waypoint
     if (this.state.playerWaypoint) {
-      this.loadChunksAround(this.state.playerWaypoint.x, this.state.playerWaypoint.y);
+      const centerKey = `${Math.floor(this.state.playerWaypoint.x / this.config.chunkSize)},${Math.floor(this.state.playerWaypoint.y / this.config.chunkSize)}`;
+      if (!processedCenters.has(centerKey)) {
+        processedCenters.add(centerKey);
+        this.loadChunksAround(this.state.playerWaypoint.x, this.state.playerWaypoint.y);
+      }
     }
   }
 

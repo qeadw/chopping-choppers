@@ -210,10 +210,10 @@ export interface WorkerUpgrades {
 }
 
 export const WORKER_UPGRADE_COSTS = {
-  restSpeed: [200, 500, 1200, 3000],
-  workDuration: [300, 800, 2000, 5000],
-  workerSpeed: [150, 400, 1000, 2500],
-  workerPower: [250, 600, 1500, 4000],
+  restSpeed: [100, 250, 600, 1500],
+  workDuration: [150, 400, 1000, 2500],
+  workerSpeed: [75, 200, 500, 1250],
+  workerPower: [125, 300, 750, 2000],
 };
 
 export enum WaypointType {
