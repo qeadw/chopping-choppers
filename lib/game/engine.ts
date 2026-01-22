@@ -1199,6 +1199,9 @@ export class GameEngine {
     const shackCenterX = shack.x + shack.width / 2;
     const shackCenterY = shack.y + shack.height / 2;
 
+    // Create Set of wood drops for O(1) validation lookup
+    const woodDropSet = new Set(this.state.woodDrops);
+
     for (const worker of this.state.workers) {
       // Update chop timer
       if (worker.chopTimer > 0) {
@@ -1227,21 +1230,20 @@ export class GameEngine {
 
       // Validate target tree still exists in loaded chunks (may have been unloaded)
       if (worker.targetTree) {
-        let treeFound = false;
-        for (const chunk of this.state.chunks.values()) {
-          if (chunk.trees.includes(worker.targetTree)) {
-            treeFound = true;
-            break;
-          }
-        }
-        if (!treeFound) {
+        // O(1) check: compute tree's chunk and verify it's loaded with the tree
+        const treeChunkX = Math.floor(worker.targetTree.x / this.config.chunkSize);
+        const treeChunkY = Math.floor(worker.targetTree.y / this.config.chunkSize);
+        const treeChunkKey = `${treeChunkX},${treeChunkY}`;
+        const treeChunk = this.state.chunks.get(treeChunkKey);
+        // Tree is invalid if chunk unloaded OR tree died
+        if (!treeChunk || worker.targetTree.isDead) {
           worker.targetTree = null;
           worker.state = WorkerState.Idle;
         }
       }
 
-      // Validate target drop still exists
-      if (worker.targetDrop && !this.state.woodDrops.includes(worker.targetDrop)) {
+      // Validate target drop still exists (use Set for O(1) lookup)
+      if (worker.targetDrop && (worker.targetDrop.amount <= 0 || !woodDropSet.has(worker.targetDrop))) {
         worker.targetDrop = null;
         worker.state = WorkerState.Idle;
       }
@@ -1709,6 +1711,14 @@ export class GameEngine {
     const chopperWaypoints = this.state.waypoints.filter(w => w.type === WaypointType.Chopper);
     const hasWaypoints = chopperWaypoints.length > 0;
 
+    // Pre-compute tree targeting counts ONCE (avoid O(n²) filter in loop)
+    const treeTargetCounts = new Map<Tree, number>();
+    for (const w of this.state.workers) {
+      if (w !== worker && w.targetTree) {
+        treeTargetCounts.set(w.targetTree, (treeTargetCounts.get(w.targetTree) || 0) + 1);
+      }
+    }
+
     // If waypoints exist, get the chunks they're in
     const waypointChunks = new Set<string>();
     if (hasWaypoints) {
@@ -1718,6 +1728,11 @@ export class GameEngine {
         waypointChunks.add(`${chunkX},${chunkY}`);
       }
     }
+
+    // Calculate max range once
+    const baseRange = 300;
+    const maxRange = baseRange + worker.searchRadius * this.config.chunkSize;
+    const maxRangeSq = maxRange * maxRange; // Use squared distance to avoid sqrt
 
     for (const chunk of this.state.chunks.values()) {
       const chunkKey = `${chunk.x},${chunk.y}`;
@@ -1730,23 +1745,18 @@ export class GameEngine {
       for (const tree of chunk.trees) {
         if (tree.isDead) continue;
 
-        // Allow up to 2 choppers per tree
-        const targetingCount = this.state.workers.filter(
-          w => w !== worker && w.targetTree === tree
-        ).length;
-        if (targetingCount >= 2) continue;
+        // Allow up to 2 choppers per tree (O(1) lookup now)
+        if ((treeTargetCounts.get(tree) || 0) >= 2) continue;
 
         const dx = tree.x - worker.position.x;
         const dy = tree.y - worker.position.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
+        const distSq = dx * dx + dy * dy;
 
-        // Without waypoints, limit search range based on worker's searchRadius
-        const baseRange = 300;
-        const maxRange = baseRange + worker.searchRadius * this.config.chunkSize;
-        if (!hasWaypoints && dist > maxRange) continue;
+        // Without waypoints, limit search range (use squared distance)
+        if (!hasWaypoints && distSq > maxRangeSq) continue;
 
-        if (dist < nearestDist) {
-          nearestDist = dist;
+        if (distSq < nearestDist) {
+          nearestDist = distSq;
           nearest = tree;
         }
       }
@@ -1756,29 +1766,40 @@ export class GameEngine {
   }
 
   private handleTreeCollisions(position: { x: number; y: number }, entityRadius: number): void {
-    for (const chunk of this.state.chunks.values()) {
-      for (const tree of chunk.trees) {
-        if (tree.isDead) continue;
+    // Only check chunks near the entity (3x3 grid around entity's chunk)
+    const entityChunkX = Math.floor(position.x / this.config.chunkSize);
+    const entityChunkY = Math.floor(position.y / this.config.chunkSize);
 
-        const treeRadius = TREE_STATS[tree.type].hitboxRadius;
-        const minDist = entityRadius + treeRadius;
+    for (let cdx = -1; cdx <= 1; cdx++) {
+      for (let cdy = -1; cdy <= 1; cdy++) {
+        const chunkKey = `${entityChunkX + cdx},${entityChunkY + cdy}`;
+        const chunk = this.state.chunks.get(chunkKey);
+        if (!chunk) continue;
 
-        // Tree hitbox is on the trunk, offset up from the base (tree.y)
-        // The tree sprite is drawn with its base at tree.y, so we offset up by ~15 pixels
-        const treeHitboxY = tree.y - 15;
+        for (const tree of chunk.trees) {
+          if (tree.isDead) continue;
 
-        const dx = position.x - tree.x;
-        const dy = position.y - treeHitboxY;
-        const dist = Math.sqrt(dx * dx + dy * dy);
+          const treeRadius = TREE_STATS[tree.type].hitboxRadius;
+          const minDist = entityRadius + treeRadius;
 
-        if (dist < minDist && dist > 0) {
-          // Push entity out of tree
-          const overlap = minDist - dist;
-          const pushX = (dx / dist) * overlap;
-          const pushY = (dy / dist) * overlap;
+          // Tree hitbox is on the trunk, offset up from the base (tree.y)
+          const treeHitboxY = tree.y - 15;
 
-          position.x += pushX;
-          position.y += pushY;
+          const dx = position.x - tree.x;
+          const dy = position.y - treeHitboxY;
+          const distSq = dx * dx + dy * dy;
+          const minDistSq = minDist * minDist;
+
+          if (distSq < minDistSq && distSq > 0) {
+            // Only compute sqrt when actually colliding
+            const dist = Math.sqrt(distSq);
+            const overlap = minDist - dist;
+            const pushX = (dx / dist) * overlap;
+            const pushY = (dy / dist) * overlap;
+
+            position.x += pushX;
+            position.y += pushY;
+          }
         }
       }
     }
@@ -1787,38 +1808,50 @@ export class GameEngine {
   private findNearestWoodDrop(x: number, y: number, maxRange: number): WoodDrop | null {
     let nearest: WoodDrop | null = null;
     let nearestDist = maxRange;
+    const maxRangeSq = maxRange * maxRange;
 
     // Get collector waypoints
     const collectorWaypoints = this.state.waypoints.filter(w => w.type === WaypointType.Collector);
+    const waypointPrioritySq = 400 * 400; // Use squared distance
+
+    // Pre-compute drop targeting counts ONCE (avoid O(n²) filter in loop)
+    const dropTargetCounts = new Map<WoodDrop, number>();
+    for (const w of this.state.workers) {
+      if (w.targetDrop) {
+        dropTargetCounts.set(w.targetDrop, (dropTargetCounts.get(w.targetDrop) || 0) + 1);
+      }
+    }
 
     for (const drop of this.state.woodDrops) {
       if (drop.amount <= 0) continue;
 
-      // Allow up to 2 collectors per wood drop
-      const targetingCount = this.state.workers.filter(w => w.targetDrop === drop).length;
-      if (targetingCount >= 2) continue;
+      // Allow up to 2 collectors per wood drop (O(1) lookup now)
+      if ((dropTargetCounts.get(drop) || 0) >= 2) continue;
 
       const dx = drop.x - x;
       const dy = drop.y - y;
-      let dist = Math.sqrt(dx * dx + dy * dy);
+      let distSq = dx * dx + dy * dy;
+
+      // Quick range check before expensive operations
+      if (distSq > maxRangeSq * 4) continue; // Allow some slack for waypoint priority
 
       // If there are waypoints, prioritize drops near waypoints
       if (collectorWaypoints.length > 0) {
-        let nearestWaypointDist = Infinity;
+        let nearestWaypointDistSq = Infinity;
         for (const wp of collectorWaypoints) {
           const wpDx = drop.x - wp.x;
           const wpDy = drop.y - wp.y;
-          const wpDist = Math.sqrt(wpDx * wpDx + wpDy * wpDy);
-          nearestWaypointDist = Math.min(nearestWaypointDist, wpDist);
+          const wpDistSq = wpDx * wpDx + wpDy * wpDy;
+          if (wpDistSq < nearestWaypointDistSq) nearestWaypointDistSq = wpDistSq;
         }
-        // Drops near waypoints get priority
-        if (nearestWaypointDist < 400) {
-          dist = dist * 0.3;
+        // Drops near waypoints get priority (compare squared)
+        if (nearestWaypointDistSq < waypointPrioritySq) {
+          distSq = distSq * 0.09; // 0.3² = 0.09
         }
       }
 
-      if (dist < nearestDist) {
-        nearestDist = dist;
+      if (distSq < nearestDist * nearestDist) {
+        nearestDist = Math.sqrt(distSq);
         nearest = drop;
       }
     }
@@ -1830,39 +1863,50 @@ export class GameEngine {
   private findClosestWoodDrop(x: number, y: number, maxRange: number, currentTarget: WoodDrop | null): WoodDrop | null {
     let nearest: WoodDrop | null = null;
     let nearestDist = maxRange;
+    const maxRangeSq = maxRange * maxRange;
 
     // Get collector waypoints
     const collectorWaypoints = this.state.waypoints.filter(w => w.type === WaypointType.Collector);
+    const waypointPrioritySq = 400 * 400;
+
+    // Pre-compute drop targeting counts ONCE
+    const dropTargetCounts = new Map<WoodDrop, number>();
+    for (const w of this.state.workers) {
+      if (w.targetDrop) {
+        dropTargetCounts.set(w.targetDrop, (dropTargetCounts.get(w.targetDrop) || 0) + 1);
+      }
+    }
 
     for (const drop of this.state.woodDrops) {
       if (drop.amount <= 0) continue;
 
       // Allow current target, but limit other drops to 2 collectors max
       if (drop !== currentTarget) {
-        const targetingCount = this.state.workers.filter(w => w.targetDrop === drop).length;
-        if (targetingCount >= 2) continue;
+        if ((dropTargetCounts.get(drop) || 0) >= 2) continue;
       }
 
       const dx = drop.x - x;
       const dy = drop.y - y;
-      let dist = Math.sqrt(dx * dx + dy * dy);
+      let distSq = dx * dx + dy * dy;
+
+      if (distSq > maxRangeSq * 4) continue;
 
       // If there are waypoints, prioritize drops near waypoints
       if (collectorWaypoints.length > 0) {
-        let nearestWaypointDist = Infinity;
+        let nearestWaypointDistSq = Infinity;
         for (const wp of collectorWaypoints) {
           const wpDx = drop.x - wp.x;
           const wpDy = drop.y - wp.y;
-          const wpDist = Math.sqrt(wpDx * wpDx + wpDy * wpDy);
-          nearestWaypointDist = Math.min(nearestWaypointDist, wpDist);
+          const wpDistSq = wpDx * wpDx + wpDy * wpDy;
+          if (wpDistSq < nearestWaypointDistSq) nearestWaypointDistSq = wpDistSq;
         }
-        if (nearestWaypointDist < 400) {
-          dist = dist * 0.3;
+        if (nearestWaypointDistSq < waypointPrioritySq) {
+          distSq = distSq * 0.09;
         }
       }
 
-      if (dist < nearestDist) {
-        nearestDist = dist;
+      if (distSq < nearestDist * nearestDist) {
+        nearestDist = Math.sqrt(distSq);
         nearest = drop;
       }
     }
