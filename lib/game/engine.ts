@@ -652,7 +652,7 @@ export class GameEngine {
       wood: 0,
       chopTimer: 0,
       facingRight: true,
-      carryCapacity: isCollector ? 2 : 5,
+      carryCapacity: isCollector ? 10 : 5,  // Collectors carry more since they only collect
       speed: isCollector ? 18 : 20,
       chopPower: isCollector ? 0 : 1,
       treesChopped: 0,
@@ -859,6 +859,24 @@ export class GameEngine {
   }
 
   private spawnWoodDrop(x: number, y: number, amount: number): void {
+    // If too many drops exist, try to merge with a nearby drop first
+    const MAX_WOOD_DROPS = 500;
+    if (this.state.woodDrops.length >= MAX_WOOD_DROPS) {
+      // Find a nearby drop to merge with
+      for (const existingDrop of this.state.woodDrops) {
+        const dx = existingDrop.x - x;
+        const dy = existingDrop.y - y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 50) {
+          // Merge into this drop
+          existingDrop.amount += amount;
+          return;
+        }
+      }
+      // No nearby drop found - remove the oldest drop
+      this.state.woodDrops.shift();
+    }
+
     // Scatter drops slightly around the tree base
     const drop: WoodDrop = {
       id: `drop_${dropIdCounter++}`,
@@ -877,7 +895,11 @@ export class GameEngine {
     for (let i = this.state.woodDrops.length - 1; i >= 0; i--) {
       const drop = this.state.woodDrops[i];
 
-      // Wood never despawns - removed lifetime expiration
+      // Clean up empty drops (can happen if collector empties them)
+      if (drop.amount <= 0) {
+        this.state.woodDrops.splice(i, 1);
+        continue;
+      }
 
       // Check if player can pick up
       const dx = drop.x - player.position.x;
@@ -1041,6 +1063,12 @@ export class GameEngine {
   }
 
   private spawnWoodParticles(x: number, y: number): void {
+    // Cap particles to prevent memory issues
+    const MAX_PARTICLES = 200;
+    while (this.state.particles.length >= MAX_PARTICLES - 5) {
+      this.state.particles.shift();
+    }
+
     const colors = ['#8B4513', '#A0522D', '#CD853F', '#D2691E'];
     for (let i = 0; i < 5; i++) {
       this.state.particles.push({
@@ -1103,6 +1131,12 @@ export class GameEngine {
   }
 
   private addFloatingText(x: number, y: number, text: string, color: string): void {
+    // Cap floating texts to prevent memory issues
+    const MAX_FLOATING_TEXTS = 50;
+    while (this.state.floatingTexts.length >= MAX_FLOATING_TEXTS) {
+      this.state.floatingTexts.shift();
+    }
+
     this.state.floatingTexts.push({
       x,
       y,
@@ -1171,7 +1205,7 @@ export class GameEngine {
       wood: 0,
       chopTimer: 0,
       facingRight: true,
-      carryCapacity: isCollector ? 2 : 5,   // Collectors carry less
+      carryCapacity: isCollector ? 10 : 5,  // Collectors carry more since they only collect
       speed: isCollector ? 18 : 20,         // Base worker speed
       chopPower: isCollector ? 0 : 1,   // Choppers much weaker
       // Fatigue system
@@ -1286,9 +1320,9 @@ export class GameEngine {
                 if (worker.searchRadius < 5) {
                   worker.searchRadius++;
                 }
-                // No drops found - if carrying any wood, go sell it
-                // Otherwise move toward chipper area to wait for drops
-                if (worker.wood > 0) {
+                // Only go sell if search is maxed out and carrying wood
+                // Otherwise keep searching or drift toward chipper
+                if (worker.wood > 0 && worker.searchRadius >= 5) {
                   worker.state = WorkerState.ReturningToChipper;
                 } else {
                   // Move toward chipper if too far away (more than 200 units)
@@ -1477,19 +1511,22 @@ export class GameEngine {
             break;
           }
 
-          // Pick up wood one at a time - base 1/sec, 50% faster per worker speed upgrade
-          const collectRate = Math.pow(1.5, workerUpgrades.workerSpeed - 1); // items per second
-          const collectInterval = 1 / collectRate;
+          // Pick up wood in batches - base 5/tick, 50% faster per worker speed upgrade
+          const collectRate = Math.pow(1.5, workerUpgrades.workerSpeed - 1); // batches per second
+          const collectInterval = 0.3 / collectRate; // Fast collection (0.3s base interval)
 
           if (worker.chopTimer <= 0) {
-            // Pick up 1 wood
+            // Pick up multiple wood at once (5 base, scales with speed)
             const effectiveCapacity = Math.floor(worker.carryCapacity * Math.pow(1.8, effectivePower - 1));
-            if (worker.wood < effectiveCapacity && worker.targetDrop.amount > 0) {
-              worker.wood++;
-              worker.targetDrop.amount--;
-              this.addFloatingText(worker.position.x, worker.position.y - 20, '+1', '#8B4513');
-              // Drain stamina per wood collected
-              worker.stamina -= 2;
+            const spaceLeft = effectiveCapacity - worker.wood;
+            const batchSize = Math.min(5, spaceLeft, worker.targetDrop.amount); // Grab up to 5 at a time
+
+            if (batchSize > 0) {
+              worker.wood += batchSize;
+              worker.targetDrop.amount -= batchSize;
+              this.addFloatingText(worker.position.x, worker.position.y - 20, `+${batchSize}`, '#8B4513');
+              // Drain stamina per batch collected
+              worker.stamina -= 1;
 
               // Reset timer for next pickup
               worker.chopTimer = collectInterval;
@@ -1807,7 +1844,7 @@ export class GameEngine {
 
   private findNearestWoodDrop(x: number, y: number, maxRange: number): WoodDrop | null {
     let nearest: WoodDrop | null = null;
-    let nearestDist = maxRange;
+    let nearestScoreSq = maxRange * maxRange; // Track effective score in squared space
     const maxRangeSq = maxRange * maxRange;
 
     // Get collector waypoints
@@ -1830,10 +1867,13 @@ export class GameEngine {
 
       const dx = drop.x - x;
       const dy = drop.y - y;
-      let distSq = dx * dx + dy * dy;
+      const distSq = dx * dx + dy * dy;
 
       // Quick range check before expensive operations
       if (distSq > maxRangeSq * 4) continue; // Allow some slack for waypoint priority
+
+      // Calculate effective score (may be reduced by waypoint priority)
+      let scoreSq = distSq;
 
       // If there are waypoints, prioritize drops near waypoints
       if (collectorWaypoints.length > 0) {
@@ -1846,12 +1886,12 @@ export class GameEngine {
         }
         // Drops near waypoints get priority (compare squared)
         if (nearestWaypointDistSq < waypointPrioritySq) {
-          distSq = distSq * 0.09; // 0.3² = 0.09
+          scoreSq = distSq * 0.09; // 0.3² = 0.09
         }
       }
 
-      if (distSq < nearestDist * nearestDist) {
-        nearestDist = Math.sqrt(distSq);
+      if (scoreSq < nearestScoreSq) {
+        nearestScoreSq = scoreSq;
         nearest = drop;
       }
     }
@@ -1862,7 +1902,7 @@ export class GameEngine {
   // Find closest wood drop, including current target but allowing up to 2 collectors per drop
   private findClosestWoodDrop(x: number, y: number, maxRange: number, currentTarget: WoodDrop | null): WoodDrop | null {
     let nearest: WoodDrop | null = null;
-    let nearestDist = maxRange;
+    let nearestScoreSq = maxRange * maxRange; // Track effective score in squared space
     const maxRangeSq = maxRange * maxRange;
 
     // Get collector waypoints
@@ -1887,9 +1927,12 @@ export class GameEngine {
 
       const dx = drop.x - x;
       const dy = drop.y - y;
-      let distSq = dx * dx + dy * dy;
+      const distSq = dx * dx + dy * dy;
 
       if (distSq > maxRangeSq * 4) continue;
+
+      // Calculate effective score (may be reduced by waypoint priority)
+      let scoreSq = distSq;
 
       // If there are waypoints, prioritize drops near waypoints
       if (collectorWaypoints.length > 0) {
@@ -1901,12 +1944,12 @@ export class GameEngine {
           if (wpDistSq < nearestWaypointDistSq) nearestWaypointDistSq = wpDistSq;
         }
         if (nearestWaypointDistSq < waypointPrioritySq) {
-          distSq = distSq * 0.09;
+          scoreSq = distSq * 0.09;
         }
       }
 
-      if (distSq < nearestDist * nearestDist) {
-        nearestDist = Math.sqrt(distSq);
+      if (scoreSq < nearestScoreSq) {
+        nearestScoreSq = scoreSq;
         nearest = drop;
       }
     }
