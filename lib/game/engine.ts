@@ -106,6 +106,7 @@ export class GameEngine {
   private tabAwayTime: number = 0; // Timestamp when user tabbed away
   private catchUpTimeRemaining: number = 0; // Time left to simulate at accelerated rate
   private waypointPlacementMode: WaypointType | null = null; // Current waypoint placement mode
+  private regenCooldown: number = 0; // Cooldown timer for regenerate chunks button
 
   // Generate a unique world seed using crypto API for better randomness
   private generateWorldSeed(): number {
@@ -272,15 +273,40 @@ export class GameEngine {
     };
     this.canvas.addEventListener('wheel', this.wheelHandler, { passive: false });
 
-    // Setup click handler for chunk challenge toggle and waypoint placement
+    // Setup click handler for chunk challenge toggle, waypoint placement, and UI buttons
     this.clickHandler = (e: MouseEvent) => {
-      // Only works when fully zoomed out
-      if (this.state.camera.zoom > 0.15) return;
-
-      // Convert screen coordinates to world coordinates
+      // Convert screen coordinates
       const rect = this.canvas.getBoundingClientRect();
       const screenX = e.clientX - rect.left;
       const screenY = e.clientY - rect.top;
+
+      // Check for regenerate button click (always works regardless of zoom)
+      // Button position matches renderer: upgradeX, padding+260, upgradeWidth, 32
+      const padding = 15;
+      const upgradeWidth = 230;
+      const regenButtonX = this.canvas.width - upgradeWidth - padding;
+      const regenButtonY = padding + 260;
+      const regenButtonW = upgradeWidth;
+      const regenButtonH = 32;
+
+      if (screenX >= regenButtonX && screenX <= regenButtonX + regenButtonW &&
+          screenY >= regenButtonY && screenY <= regenButtonY + regenButtonH) {
+        if (this.regenCooldown > 0) {
+          this.addFloatingText(
+            this.state.player.position.x,
+            this.state.player.position.y - 30,
+            `Cooldown: ${Math.ceil(this.regenCooldown)}s`,
+            '#FF6666'
+          );
+        } else {
+          this.regenerateUnloadedChunks();
+          this.regenCooldown = 150; // 150 second cooldown
+        }
+        return;
+      }
+
+      // Rest of click handling only works when fully zoomed out
+      if (this.state.camera.zoom > 0.15) return;
 
       // Calculate effective camera view
       const effectiveWidth = this.state.camera.width / this.state.camera.zoom;
@@ -630,6 +656,77 @@ export class GameEngine {
     }
   }
 
+  // Regenerate all unloaded chunks by clearing their data (except gold/platinum status)
+  private regenerateUnloadedChunks(): void {
+    // Get set of currently loaded chunk keys
+    const loadedChunkKeys = new Set(this.state.chunks.keys());
+
+    // Helper to parse chunk key from tree ID (format: tree_chunkX_chunkY_index)
+    const getChunkKeyFromTreeId = (treeId: string): string | null => {
+      const match = treeId.match(/^tree_(-?\d+)_(-?\d+)_\d+$/);
+      if (match) {
+        return `${match[1]},${match[2]}`;
+      }
+      return null;
+    };
+
+    // Helper to get chunk key from world coordinates
+    const getChunkKeyFromCoords = (x: number, y: number): string => {
+      const chunkX = Math.floor(x / this.config.chunkSize);
+      const chunkY = Math.floor(y / this.config.chunkSize);
+      return `${chunkX},${chunkY}`;
+    };
+
+    // Clear dead trees data for unloaded chunks
+    const treesToRemove: string[] = [];
+    for (const treeId of this.deadTreesMap.keys()) {
+      const chunkKey = getChunkKeyFromTreeId(treeId);
+      if (chunkKey && !loadedChunkKeys.has(chunkKey)) {
+        treesToRemove.push(treeId);
+      }
+    }
+    for (const treeId of treesToRemove) {
+      this.deadTreesMap.delete(treeId);
+    }
+
+    // Clear wood drops in unloaded chunks
+    this.state.woodDrops = this.state.woodDrops.filter(drop => {
+      const chunkKey = getChunkKeyFromCoords(drop.x, drop.y);
+      return loadedChunkKeys.has(chunkKey);
+    });
+
+    // Clear challenge chunks for unloaded areas (keep gold/platinum status)
+    const challengeToRemove: string[] = [];
+    for (const key of this.state.challengeChunks) {
+      if (!loadedChunkKeys.has(key)) {
+        challengeToRemove.push(key);
+      }
+    }
+    for (const key of challengeToRemove) {
+      this.state.challengeChunks.delete(key);
+    }
+
+    // Clear toggle cooldowns for unloaded chunks
+    const cooldownsToRemove: string[] = [];
+    for (const key of this.state.chunkToggleCooldowns.keys()) {
+      if (!loadedChunkKeys.has(key)) {
+        cooldownsToRemove.push(key);
+      }
+    }
+    for (const key of cooldownsToRemove) {
+      this.state.chunkToggleCooldowns.delete(key);
+    }
+
+    // Show feedback to user
+    const clearedCount = treesToRemove.length;
+    this.addFloatingText(
+      this.state.player.position.x,
+      this.state.player.position.y - 30,
+      `Regenerated ${clearedCount} trees`,
+      '#FFAAAA'
+    );
+  }
+
   private spawnWorkerSilent(type: WorkerType): void {
     const { shack, workerUpgrades } = this.state;
     const isCollector = type === WorkerType.Collector;
@@ -767,6 +864,11 @@ export class GameEngine {
       } else {
         this.state.chunkToggleCooldowns.set(key, newTime);
       }
+    }
+
+    // Update regenerate button cooldown
+    if (this.regenCooldown > 0) {
+      this.regenCooldown = Math.max(0, this.regenCooldown - deltaTime);
     }
 
     // Handle chopping
@@ -2167,6 +2269,6 @@ export class GameEngine {
   }
 
   private render(): void {
-    render(this.ctx, this.state, this.sprites, this.config, this.catchUpTimeRemaining, this.waypointPlacementMode);
+    render(this.ctx, this.state, this.sprites, this.config, this.catchUpTimeRemaining, this.waypointPlacementMode, this.regenCooldown);
   }
 }

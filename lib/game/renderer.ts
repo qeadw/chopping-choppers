@@ -11,7 +11,8 @@ export function render(
   sprites: SpriteSheet,
   config: GameConfig,
   catchUpTime: number = 0,
-  waypointMode: WaypointType | null = null
+  waypointMode: WaypointType | null = null,
+  regenCooldown: number = 0
 ): void {
   const { camera, player, chunks } = state;
   const baseScale = config.pixelScale;
@@ -116,7 +117,7 @@ export function render(
   }
 
   // Draw UI (always at normal scale)
-  drawUI(ctx, state, sprites, config);
+  drawUI(ctx, state, sprites, config, regenCooldown);
 
   // Draw player waypoint off-screen indicator when zoomed in
   if (camera.zoom >= 0.5 && state.playerWaypoint) {
@@ -460,7 +461,8 @@ function drawUI(
   ctx: CanvasRenderingContext2D,
   state: GameState,
   sprites: SpriteSheet,
-  config: GameConfig
+  config: GameConfig,
+  regenCooldown: number = 0
 ): void {
   const scale = config.pixelScale;
   const padding = 15;
@@ -579,6 +581,40 @@ function drawUI(
     ctx.fillStyle = '#888';
     ctx.fillText(`Lv${upg.level}`, upgradeX + 130, y);
   });
+
+  // Regenerate Chunks button (right side, below upgrades)
+  const regenButtonX = upgradeX;
+  const regenButtonY = padding + 260;
+  const regenButtonW = upgradeWidth;
+  const regenButtonH = 32;
+  const regenOnCooldown = regenCooldown > 0;
+
+  // Button background - darker when on cooldown
+  ctx.fillStyle = regenOnCooldown ? 'rgba(40, 40, 40, 0.85)' : 'rgba(80, 40, 40, 0.85)';
+  ctx.fillRect(regenButtonX, regenButtonY, regenButtonW, regenButtonH);
+  ctx.strokeStyle = regenOnCooldown ? '#666666' : '#AA6666';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(regenButtonX, regenButtonY, regenButtonW, regenButtonH);
+
+  // Draw cooldown progress bar if on cooldown
+  if (regenOnCooldown) {
+    const cooldownPercent = regenCooldown / 150;
+    const barWidth = regenButtonW * (1 - cooldownPercent);
+    ctx.fillStyle = 'rgba(100, 60, 60, 0.5)';
+    ctx.fillRect(regenButtonX, regenButtonY, barWidth, regenButtonH);
+  }
+
+  ctx.fillStyle = regenOnCooldown ? '#888888' : '#FFAAAA';
+  ctx.font = 'bold 12px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('REGENERATE CHUNKS', regenButtonX + regenButtonW / 2, regenButtonY + 14);
+  ctx.fillStyle = regenOnCooldown ? '#666666' : '#AAAAAA';
+  ctx.font = '10px monospace';
+  if (regenOnCooldown) {
+    ctx.fillText(`Cooldown: ${Math.ceil(regenCooldown)}s`, regenButtonX + regenButtonW / 2, regenButtonY + 26);
+  } else {
+    ctx.fillText('(Reset unloaded areas)', regenButtonX + regenButtonW / 2, regenButtonY + 26);
+  }
 
   // Bottom: Controls hint (two lines)
   ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
