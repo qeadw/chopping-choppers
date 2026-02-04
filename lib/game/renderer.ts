@@ -118,13 +118,13 @@ export function render(
     drawFloatingText(ctx, text, effectiveCamera, scale);
   }
 
-  // Draw chunk debug overlay when zoomed out
-  if (camera.zoom < 0.6) {
+  // Draw chunk debug overlay when zoomed out (unless UI hidden)
+  if (camera.zoom < 0.6 && !state.uiHidden) {
     drawChunkOverlay(ctx, state, config, effectiveCamera, scale, waypointMode);
   }
 
-  // Draw waypoints when zoomed out
-  if (camera.zoom < 0.6) {
+  // Draw waypoints when zoomed out (unless UI hidden)
+  if (camera.zoom < 0.6 && !state.uiHidden) {
     drawWaypoints(ctx, state, effectiveCamera, scale);
   }
 
