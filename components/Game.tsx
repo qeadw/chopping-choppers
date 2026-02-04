@@ -64,11 +64,17 @@ export default function Game() {
     reader.onload = (event) => {
       try {
         const data = JSON.parse(event.target?.result as string);
+        // Validate it looks like a save file
+        if (typeof data.money !== 'number' && typeof data.totalWoodChopped !== 'number') {
+          alert('This does not appear to be a valid Chopping Choppers save file!');
+          return;
+        }
         localStorage.setItem(SAVE_KEY, JSON.stringify(data));
-        alert('Save imported successfully! Refreshing...');
+        alert(`Save imported! Money: $${data.money || 0}, Total Wood: ${data.totalWoodChopped || 0}. Refreshing...`);
         window.location.reload();
-      } catch {
-        alert('Invalid save file!');
+      } catch (err) {
+        console.error('Import error:', err);
+        alert('Invalid save file! Could not parse JSON.');
       }
     };
     reader.readAsText(file);

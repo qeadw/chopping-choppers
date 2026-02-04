@@ -619,9 +619,15 @@ export class GameEngine {
         this.state.playerWaypoint = data.playerWaypoint;
       }
 
-      console.log('Progress loaded!');
+      console.log('Progress loaded!', {
+        money: this.state.money,
+        wood: this.state.wood,
+        totalWoodChopped: this.state.totalWoodChopped,
+        workers: this.state.workers.length,
+        worldSeed: this.state.worldSeed,
+      });
     } catch (e) {
-      console.warn('Failed to load progress:', e);
+      console.error('Failed to load progress:', e);
     }
   }
 
