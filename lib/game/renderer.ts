@@ -128,15 +128,22 @@ export function render(
     drawWaypoints(ctx, state, effectiveCamera, scale);
   }
 
-  // Draw UI (always at normal scale)
-  drawUI(ctx, state, sprites, config, regenCooldown);
+  // Draw UI (always at normal scale) - unless hidden with F2
+  if (!state.uiHidden) {
+    drawUI(ctx, state, sprites, config, regenCooldown);
 
-  // Draw cheat menu if open
+    // Draw apple drop notification popup (middle left)
+    if (state.appleDropNotification.active) {
+      drawAppleNotification(ctx);
+    }
+  }
+
+  // Draw cheat menu if open (ignores UI hidden state)
   if (cheatMenuOpen) {
     drawCheatMenu(ctx, state);
   }
 
-  // Draw tree checklist if open
+  // Draw tree checklist if open (ignores UI hidden state)
   if (treeChecklistOpen) {
     drawTreeChecklist(ctx, state, sprites);
   }
@@ -759,13 +766,13 @@ function drawUI(
   // Bottom: Controls hint (two lines)
   ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
   const controlsY = ctx.canvas.height - 50;
-  ctx.fillRect(padding, controlsY, 620, 40);
+  ctx.fillRect(padding, controlsY, 680, 40);
 
   ctx.fillStyle = '#ccc';
   ctx.font = '11px monospace';
   ctx.textAlign = 'left';
-  ctx.fillText('WASD: Move | Click: Chop | E: Sell | J/K: Hire | C/V: Toggle workers | T: Timers | Scroll: Zoom', padding + 10, controlsY + 14);
-  ctx.fillText('Zoomed out: Q: Chopper waypoint | R: Collector waypoint | F: Player waypoint | X: Clear all', padding + 10, controlsY + 30);
+  ctx.fillText('WASD: Move | Click: Chop | E: Sell | J/K: Hire | C/V: Toggle workers | T: Timers | L: Checklist | F2: Hide UI', padding + 10, controlsY + 14);
+  ctx.fillText('Scroll: Zoom | Zoomed out: Waypoints (Q/R/Y/F/X)', padding + 10, controlsY + 30);
 
   // Apple buff timer display
   if (state.appleBuff.active && state.appleBuff.remainingTime > 0) {
@@ -1357,8 +1364,15 @@ function drawTreeChecklist(
   for (let i = 0; i < 15; i++) {
     const treeType = i as TreeType;
     const discovered = state.choppedTreeTypes.has(treeType);
+    const count = state.treeChoppedCounts.get(treeType) || 0;
     const stats = TREE_STATS[treeType];
     const color = rarityColors[i] || '#888';
+
+    // Progressive unlock thresholds
+    const showSize = count >= 10;
+    const showWood = count >= 50;
+    const showSpawnChance = count >= 100;
+    const showHP = count >= 250;
 
     // Draw tree sprite if discovered (scaled down)
     if (discovered) {
@@ -1373,26 +1387,63 @@ function drawTreeChecklist(
       ctx.fillText('?', menuX + 20, y + 4);
     }
 
-    // Tree name
+    // Tree name and count
     ctx.font = '13px monospace';
     if (discovered) {
       ctx.fillStyle = color;
       ctx.fillText(treeNames[i], menuX + 45, y);
+      // Show count
+      ctx.fillStyle = '#888';
+      ctx.font = '10px monospace';
+      ctx.fillText(`x${count}`, menuX + 145, y);
     } else {
       ctx.fillStyle = '#444';
       ctx.fillText('???', menuX + 45, y);
     }
 
-    // Stats (always show if discovered)
+    // Stats (progressive reveal based on count)
     if (discovered) {
-      ctx.font = '11px monospace';
-      ctx.fillStyle = '#aaa';
-      const healthText = `HP: ${stats.health}`;
-      const woodText = `Wood: ${stats.woodDrop}`;
-      const hitboxText = `Size: ${stats.hitboxRadius}`;
-      ctx.fillText(healthText, menuX + 180, y);
-      ctx.fillText(woodText, menuX + 260, y);
-      ctx.fillText(hitboxText, menuX + 350, y);
+      ctx.font = '10px monospace';
+      let statX = menuX + 180;
+
+      // HP (250+ trees)
+      if (showHP) {
+        ctx.fillStyle = '#aaa';
+        ctx.fillText(`HP:${stats.health}`, statX, y);
+      } else {
+        ctx.fillStyle = '#555';
+        ctx.fillText('HP:???', statX, y);
+      }
+      statX += 55;
+
+      // Wood (50+ trees)
+      if (showWood) {
+        ctx.fillStyle = '#aaa';
+        ctx.fillText(`W:${stats.woodDrop}`, statX, y);
+      } else {
+        ctx.fillStyle = '#555';
+        ctx.fillText('W:???', statX, y);
+      }
+      statX += 50;
+
+      // Size (10+ trees)
+      if (showSize) {
+        ctx.fillStyle = '#aaa';
+        ctx.fillText(`Sz:${stats.hitboxRadius}`, statX, y);
+      } else {
+        ctx.fillStyle = '#555';
+        ctx.fillText('Sz:???', statX, y);
+      }
+      statX += 45;
+
+      // Spawn chance (100+ trees)
+      if (showSpawnChance) {
+        ctx.fillStyle = '#aaa';
+        ctx.fillText(stats.spawnChance, statX, y);
+      } else {
+        ctx.fillStyle = '#555';
+        ctx.fillText('??%', statX, y);
+      }
     }
 
     // Checkmark or X
@@ -1407,4 +1458,31 @@ function drawTreeChecklist(
 
     y += rowHeight;
   }
+}
+
+function drawAppleNotification(ctx: CanvasRenderingContext2D): void {
+  const notifWidth = 150;
+  const notifHeight = 50;
+  const notifX = 15; // Middle left
+  const notifY = (ctx.canvas.height - notifHeight) / 2;
+
+  // Pulsing background
+  const pulse = Math.sin(performance.now() / 150) * 0.2 + 0.8;
+
+  // Background
+  ctx.fillStyle = `rgba(229, 57, 53, ${0.9 * pulse})`;
+  ctx.fillRect(notifX, notifY, notifWidth, notifHeight);
+
+  // Border
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(notifX, notifY, notifWidth, notifHeight);
+
+  // Text
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 16px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('APPLE', notifX + notifWidth / 2, notifY + 22);
+  ctx.font = 'bold 14px monospace';
+  ctx.fillText('DROPPED!', notifX + notifWidth / 2, notifY + 40);
 }

@@ -113,6 +113,9 @@ interface SaveData {
   appleBuffRemaining?: number;
   // Tree checklist
   choppedTreeTypes?: number[];
+  treeChoppedCounts?: { type: number; count: number }[];
+  // No-respawn chunks
+  noRespawnChunks?: string[];
 }
 
 export class GameEngine {
@@ -129,6 +132,7 @@ export class GameEngine {
   private hireKeyHandler: (e: KeyboardEvent) => void;
   private wheelHandler: (e: WheelEvent) => void;
   private clickHandler: (e: MouseEvent) => void;
+  private contextMenuHandler: (e: MouseEvent) => void;
   private beforeUnloadHandler: () => void;
   private visibilityHandler: () => void;
   private saveIntervalId: number = 0;
@@ -220,6 +224,13 @@ export class GameEngine {
       appleBuff: { active: false, remainingTime: 0, speedMultiplier: 5, damageMultiplier: 2 },
       // Tree checklist
       choppedTreeTypes: new Set(),
+      treeChoppedCounts: new Map(),
+      // Apple drop notification
+      appleDropNotification: { active: false, timer: 0 },
+      // No-respawn chunks
+      noRespawnChunks: new Set(),
+      // UI visibility
+      uiHidden: false,
     };
 
     // Load saved progress
@@ -300,6 +311,14 @@ export class GameEngine {
           this.waypointPlacementMode = WaypointType.Player;
           this.addFloatingText(this.state.player.position.x, this.state.player.position.y - 30, 'Click to place PLAYER waypoint', '#FFD700');
         }
+      } else if (key === 'y' && this.state.camera.zoom <= 0.15) {
+        // Toggle collector wood waypoint placement mode (alternative for wood collection)
+        if (this.waypointPlacementMode === WaypointType.CollectorWood) {
+          this.waypointPlacementMode = null;
+        } else {
+          this.waypointPlacementMode = WaypointType.CollectorWood;
+          this.addFloatingText(this.state.player.position.x, this.state.player.position.y - 30, 'Click to place WOOD COLLECT waypoint', '#FFAA44');
+        }
       } else if (key === 'x' && this.state.camera.zoom <= 0.15) {
         // Clear all waypoints
         this.state.waypoints = [];
@@ -311,6 +330,10 @@ export class GameEngine {
       } else if (key === 'l') {
         // Toggle tree checklist
         this.toggleTreeChecklist();
+      } else if (e.key === 'F2') {
+        // Toggle UI visibility
+        e.preventDefault();
+        this.state.uiHidden = !this.state.uiHidden;
       } else if (this.cheatMenuOpen) {
         // Cheat menu actions
         if (key === 'm') {
@@ -417,8 +440,15 @@ export class GameEngine {
             type: this.waypointPlacementMode,
           };
           this.state.waypoints.push(waypoint);
-          const color = this.waypointPlacementMode === WaypointType.Chopper ? '#5A9C5A' : '#88AAFF';
-          const typeName = this.waypointPlacementMode === WaypointType.Chopper ? 'Chopper' : 'Collector';
+          let color = '#88AAFF';
+          let typeName = 'Collector';
+          if (this.waypointPlacementMode === WaypointType.Chopper) {
+            color = '#5A9C5A';
+            typeName = 'Chopper';
+          } else if (this.waypointPlacementMode === WaypointType.CollectorWood) {
+            color = '#FFAA44';
+            typeName = 'Wood Collect';
+          }
           this.addFloatingText(worldX, worldY, `${typeName} waypoint placed`, color);
         }
         return;
@@ -432,6 +462,52 @@ export class GameEngine {
       this.toggleChunkChallenge(chunkX, chunkY);
     };
     this.canvas.addEventListener('click', this.clickHandler);
+
+    // Setup right-click handler for no-respawn chunk toggle
+    this.contextMenuHandler = (e: MouseEvent) => {
+      e.preventDefault();
+
+      // Only work when zoomed out
+      if (this.state.camera.zoom > 0.15) return;
+
+      // Convert screen coordinates to world coordinates
+      const rect = this.canvas.getBoundingClientRect();
+      const screenX = e.clientX - rect.left;
+      const screenY = e.clientY - rect.top;
+      const scale = this.config.pixelScale * this.state.camera.zoom;
+      const effectiveWidth = this.state.camera.width / this.state.camera.zoom;
+      const effectiveHeight = this.state.camera.height / this.state.camera.zoom;
+      const effectiveCameraX = this.state.player.position.x - effectiveWidth / 2;
+      const effectiveCameraY = this.state.player.position.y - effectiveHeight / 2;
+      const worldX = effectiveCameraX + screenX / scale;
+      const worldY = effectiveCameraY + screenY / scale;
+
+      // Find which chunk was right-clicked
+      const chunkX = Math.floor(worldX / this.config.chunkSize);
+      const chunkY = Math.floor(worldY / this.config.chunkSize);
+      const chunkKey = `${chunkX},${chunkY}`;
+
+      // Only allow on platinum chunks that are in challenge mode (4x health)
+      if (!this.state.platinumChunks.has(chunkKey)) {
+        this.addFloatingText(worldX, worldY, 'Platinum chunks only!', '#FF4444');
+        return;
+      }
+
+      if (!this.state.challengeChunks.has(chunkKey)) {
+        this.addFloatingText(worldX, worldY, 'Must be at 4x health!', '#FF4444');
+        return;
+      }
+
+      // Toggle no-respawn
+      if (this.state.noRespawnChunks.has(chunkKey)) {
+        this.state.noRespawnChunks.delete(chunkKey);
+        this.addFloatingText(worldX, worldY, 'Respawning ENABLED', '#00FF00');
+      } else {
+        this.state.noRespawnChunks.add(chunkKey);
+        this.addFloatingText(worldX, worldY, 'Respawning DISABLED', '#FF8800');
+      }
+    };
+    this.canvas.addEventListener('contextmenu', this.contextMenuHandler);
 
     // Setup visibility change handler for offline progress
     this.visibilityHandler = () => {
@@ -490,6 +566,7 @@ export class GameEngine {
     document.removeEventListener('visibilitychange', this.visibilityHandler);
     this.canvas.removeEventListener('wheel', this.wheelHandler);
     this.canvas.removeEventListener('click', this.clickHandler);
+    this.canvas.removeEventListener('contextmenu', this.contextMenuHandler);
   }
 
   private saveProgress(): void {
@@ -547,6 +624,9 @@ export class GameEngine {
         appleBuffRemaining: this.state.appleBuff.remainingTime,
         // Tree checklist
         choppedTreeTypes: Array.from(this.state.choppedTreeTypes),
+        treeChoppedCounts: Array.from(this.state.treeChoppedCounts.entries()).map(([type, count]) => ({ type, count })),
+        // No-respawn chunks
+        noRespawnChunks: Array.from(this.state.noRespawnChunks),
       };
       localStorage.setItem(SAVE_KEY, obfuscateSave(JSON.stringify(saveData)));
     } catch (e) {
@@ -724,6 +804,18 @@ export class GameEngine {
         this.state.choppedTreeTypes = new Set(data.choppedTreeTypes);
       }
 
+      // Restore tree chopped counts
+      if (data.treeChoppedCounts && data.treeChoppedCounts.length > 0) {
+        this.state.treeChoppedCounts = new Map(
+          data.treeChoppedCounts.map(({ type, count }) => [type as TreeType, count])
+        );
+      }
+
+      // Restore no-respawn chunks
+      if (data.noRespawnChunks && data.noRespawnChunks.length > 0) {
+        this.state.noRespawnChunks = new Set(data.noRespawnChunks);
+      }
+
       console.log('Progress loaded!', {
         money: this.state.money,
         wood: this.state.wood,
@@ -855,8 +947,16 @@ export class GameEngine {
   public getTeleportHomeCost(): number {
     const playerChunkX = Math.floor(this.state.player.position.x / this.config.chunkSize);
     const playerChunkY = Math.floor(this.state.player.position.y / this.config.chunkSize);
-    // Manhattan distance from origin in chunks
-    const chunkDistance = Math.abs(playerChunkX) + Math.abs(playerChunkY);
+
+    // Home is the 4 chunks around 0,0: (-1,-1), (-1,0), (0,-1), (0,0)
+    const isHome = (playerChunkX === -1 || playerChunkX === 0) &&
+                   (playerChunkY === -1 || playerChunkY === 0);
+    if (isHome) return 0;
+
+    // Distance from home zone (closest point to home)
+    const distX = playerChunkX < -1 ? Math.abs(playerChunkX + 1) : (playerChunkX > 0 ? playerChunkX : 0);
+    const distY = playerChunkY < -1 ? Math.abs(playerChunkY + 1) : (playerChunkY > 0 ? playerChunkY : 0);
+    const chunkDistance = distX + distY;
     return chunkDistance * 8;
   }
 
@@ -904,6 +1004,10 @@ export class GameEngine {
   private discoverTreeType(treeType: TreeType): void {
     const wasNew = !this.state.choppedTreeTypes.has(treeType);
     this.state.choppedTreeTypes.add(treeType);
+
+    // Increment tree chopped count
+    const currentCount = this.state.treeChoppedCounts.get(treeType) || 0;
+    this.state.treeChoppedCounts.set(treeType, currentCount + 1);
 
     if (wasNew) {
       const treeName = TreeType[treeType].replace(/([A-Z])/g, ' $1').trim();
@@ -1028,7 +1132,7 @@ export class GameEngine {
         const tick = Math.min(remaining, tickSize);
         this.updateWorkers(tick); // Only update workers during catch-up
         this.updateWoodDrops(tick);
-        updateTrees(this.state.chunks, tick, this.config);
+        updateTrees(this.state.chunks, tick, this.config, this.state.noRespawnChunks);
         this.applyChallengeHealthToRespawnedTrees();
 
         // Update cooldowns
@@ -1085,7 +1189,7 @@ export class GameEngine {
     this.syncDeadTreesMap();
 
     // Update tree respawn timers
-    updateTrees(this.state.chunks, deltaTime, this.config);
+    updateTrees(this.state.chunks, deltaTime, this.config, this.state.noRespawnChunks);
 
     // Ensure trees in challenge chunks have 2x health when they respawn
     this.applyChallengeHealthToRespawnedTrees();
@@ -1250,6 +1354,9 @@ export class GameEngine {
 
     // Show special floating text for rare apple drop
     this.addFloatingText(x, y - 40, 'APPLE!', '#E53935');
+
+    // Trigger apple drop notification popup
+    this.state.appleDropNotification = { active: true, timer: 3 };
   }
 
   private updateWoodDrops(deltaTime: number): void {
@@ -1375,7 +1482,7 @@ export class GameEngine {
   }
 
   private updateAppleBuff(deltaTime: number): void {
-    const { appleBuff } = this.state;
+    const { appleBuff, appleDropNotification } = this.state;
 
     if (appleBuff.active && appleBuff.remainingTime > 0) {
       appleBuff.remainingTime -= deltaTime;
@@ -1389,6 +1496,15 @@ export class GameEngine {
           'Buff ended!',
           '#888888'
         );
+      }
+    }
+
+    // Update apple drop notification timer
+    if (appleDropNotification.active && appleDropNotification.timer > 0) {
+      appleDropNotification.timer -= deltaTime;
+      if (appleDropNotification.timer <= 0) {
+        appleDropNotification.active = false;
+        appleDropNotification.timer = 0;
       }
     }
   }
@@ -1696,11 +1812,15 @@ export class GameEngine {
       // Check if this worker type is disabled
       const isDisabled = (isChopper && !this.state.choppersEnabled) || (isCollector && !this.state.collectorsEnabled);
       if (isDisabled && worker.state !== WorkerState.Resting && worker.state !== WorkerState.GoingToRest) {
-        // Disabled workers just idle
+        // Disabled workers just idle but regain 1% max stamina per second
         worker.velocity.x = 0;
         worker.velocity.y = 0;
         worker.targetTree = null;
         worker.targetDrop = null;
+        // Passive stamina regen while disabled (1% per second)
+        if (worker.stamina < worker.maxStamina) {
+          worker.stamina = Math.min(worker.maxStamina, worker.stamina + worker.maxStamina * 0.01 * deltaTime);
+        }
         continue;
       }
 
@@ -1764,14 +1884,58 @@ export class GameEngine {
             // Collectors look for wood drops to collect
             const collectorCapacity = Math.floor(worker.carryCapacity * Math.pow(1.8, effectivePower - 1));
             if (worker.wood < collectorCapacity) {
+              // Check for CollectorWood waypoints (alternative waypoint for wood collection)
+              const woodWaypoints = this.state.waypoints.filter(w => w.type === WaypointType.CollectorWood);
+
               // Search with expanding range based on searchRadius
               const baseRange = 800;
               const maxRange = baseRange + worker.searchRadius * this.config.chunkSize;
-              const nearbyDrop = this.findNearestWoodDrop(worker.position.x, worker.position.y, maxRange);
+
+              // If wood waypoints exist, search near the closest waypoint instead
+              let searchX = worker.position.x;
+              let searchY = worker.position.y;
+              let targetWaypoint: { x: number; y: number } | null = null;
+
+              if (woodWaypoints.length > 0) {
+                // Find closest wood waypoint
+                let closestDist = Infinity;
+                for (const wp of woodWaypoints) {
+                  const dx = wp.x - worker.position.x;
+                  const dy = wp.y - worker.position.y;
+                  const dist = dx * dx + dy * dy;
+                  if (dist < closestDist) {
+                    closestDist = dist;
+                    targetWaypoint = wp;
+                  }
+                }
+                if (targetWaypoint) {
+                  searchX = targetWaypoint.x;
+                  searchY = targetWaypoint.y;
+                }
+              }
+
+              const nearbyDrop = this.findNearestWoodDrop(searchX, searchY, maxRange);
               if (nearbyDrop) {
                 worker.targetDrop = nearbyDrop;
                 worker.state = WorkerState.MovingToDrop;
                 worker.searchRadius = 0; // Reset search radius on success
+              } else if (targetWaypoint) {
+                // Move toward waypoint to search for wood there
+                const dx = targetWaypoint.x - worker.position.x;
+                const dy = targetWaypoint.y - worker.position.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist > 50 && dist > 0) {
+                  worker.velocity.x = (dx / dist) * effectiveSpeed;
+                  worker.velocity.y = (dy / dist) * effectiveSpeed;
+                  worker.facingRight = dx > 0;
+                } else {
+                  // At waypoint but no wood, expand search
+                  if (worker.searchRadius < 5) {
+                    worker.searchRadius++;
+                  }
+                  worker.velocity.x = 0;
+                  worker.velocity.y = 0;
+                }
               } else {
                 // Expand search radius up to 5 extra chunks
                 if (worker.searchRadius < 5) {
@@ -1868,7 +2032,9 @@ export class GameEngine {
           // Chop the tree
           if (worker.chopTimer <= 0) {
             // Worker chop cooldown - 5% faster per Work Duration level (compounding)
-            worker.chopTimer = 0.6 * Math.pow(0.95, this.state.workerUpgrades.workDuration - 1);
+            // Apple buff also gives 5x attack speed
+            const baseChopCooldown = 0.6 * Math.pow(0.95, this.state.workerUpgrades.workDuration - 1);
+            worker.chopTimer = baseChopCooldown / appleSpeedMult;
             const chopDamage = worker.chopPower * Math.pow(1.2, effectivePower - 1) * appleDamageMult;  // 1.2x damage per level, apple buff
             const wasDestroyed = damageTree(worker.targetTree, chopDamage, this.config);
 
@@ -1975,8 +2141,9 @@ export class GameEngine {
           }
 
           // Pick up wood in batches - base 5/tick, 50% faster per worker speed upgrade
+          // Pickup speed scaled 0.25x (4x slower base interval)
           const collectRate = Math.pow(1.5, workerUpgrades.workerSpeed - 1); // batches per second
-          const collectInterval = 0.3 / collectRate; // Fast collection (0.3s base interval)
+          const collectInterval = 1.2 / collectRate; // 1.2s base interval (0.25x of original 0.3s)
 
           if (worker.chopTimer <= 0) {
             // Pick up multiple wood at once (5 base, scales with speed)
@@ -2345,8 +2512,8 @@ export class GameEngine {
       for (const tree of chunk.trees) {
         if (tree.isDead) continue;
 
-        // Allow up to 2 choppers per tree (O(1) lookup now)
-        if ((treeTargetCounts.get(tree) || 0) >= 2) continue;
+        // All choppers can stack on the same tree (no limit)
+        // This allows groups of choppers to work together efficiently
 
         const dx = tree.x - worker.position.x;
         const dy = tree.y - worker.position.y;

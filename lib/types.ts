@@ -51,23 +51,23 @@ export enum TreeType {
   WorldTree = 14,      // 10x rarer than Divine (legendary!)
 }
 
-// Wood value, health, and hitbox by tree type (health x8 for 1 damage per hit base)
-export const TREE_STATS: Record<TreeType, { health: number; woodDrop: number; hitboxRadius: number }> = {
-  [TreeType.SmallPine]: { health: 16, woodDrop: 1, hitboxRadius: 6 },
-  [TreeType.LargePine]: { health: 32, woodDrop: 3, hitboxRadius: 8 },
-  [TreeType.Oak]: { health: 40, woodDrop: 4, hitboxRadius: 10 },
-  [TreeType.DeadTree]: { health: 8, woodDrop: 1, hitboxRadius: 5 },
-  [TreeType.Birch]: { health: 24, woodDrop: 2, hitboxRadius: 6 },
-  [TreeType.Willow]: { health: 48, woodDrop: 5, hitboxRadius: 12 },
-  [TreeType.CherryBlossom]: { health: 64, woodDrop: 8, hitboxRadius: 10 },
-  [TreeType.GiantRedwood]: { health: 120, woodDrop: 15, hitboxRadius: 14 },
-  [TreeType.AncientOak]: { health: 160, woodDrop: 25, hitboxRadius: 16 },
-  [TreeType.MagicTree]: { health: 240, woodDrop: 50, hitboxRadius: 12 },
-  [TreeType.CrystalTree]: { health: 400, woodDrop: 500, hitboxRadius: 10 },
-  [TreeType.VoidTree]: { health: 600, woodDrop: 1000, hitboxRadius: 14 },
-  [TreeType.CosmicTree]: { health: 1000, woodDrop: 2500, hitboxRadius: 12 },
-  [TreeType.DivineTree]: { health: 1500, woodDrop: 5000, hitboxRadius: 16 },
-  [TreeType.WorldTree]: { health: 2500, woodDrop: 12500, hitboxRadius: 20 },
+// Wood value, health, hitbox, and spawn chance by tree type (health x8 for 1 damage per hit base)
+export const TREE_STATS: Record<TreeType, { health: number; woodDrop: number; hitboxRadius: number; spawnChance: string }> = {
+  [TreeType.SmallPine]: { health: 16, woodDrop: 1, hitboxRadius: 6, spawnChance: '50%' },
+  [TreeType.LargePine]: { health: 32, woodDrop: 3, hitboxRadius: 8, spawnChance: '25%' },
+  [TreeType.Oak]: { health: 40, woodDrop: 4, hitboxRadius: 10, spawnChance: '12.5%' },
+  [TreeType.DeadTree]: { health: 8, woodDrop: 1, hitboxRadius: 5, spawnChance: '6.25%' },
+  [TreeType.Birch]: { health: 24, woodDrop: 2, hitboxRadius: 6, spawnChance: '3.125%' },
+  [TreeType.Willow]: { health: 48, woodDrop: 5, hitboxRadius: 12, spawnChance: '1.56%' },
+  [TreeType.CherryBlossom]: { health: 64, woodDrop: 8, hitboxRadius: 10, spawnChance: '0.78%' },
+  [TreeType.GiantRedwood]: { health: 120, woodDrop: 15, hitboxRadius: 14, spawnChance: '0.39%' },
+  [TreeType.AncientOak]: { health: 160, woodDrop: 25, hitboxRadius: 16, spawnChance: '0.2%' },
+  [TreeType.MagicTree]: { health: 240, woodDrop: 50, hitboxRadius: 12, spawnChance: '0.1%' },
+  [TreeType.CrystalTree]: { health: 400, woodDrop: 500, hitboxRadius: 10, spawnChance: '0.01%' },
+  [TreeType.VoidTree]: { health: 600, woodDrop: 1000, hitboxRadius: 14, spawnChance: '0.001%' },
+  [TreeType.CosmicTree]: { health: 1000, woodDrop: 2500, hitboxRadius: 12, spawnChance: '0.0001%' },
+  [TreeType.DivineTree]: { health: 1500, woodDrop: 5000, hitboxRadius: 16, spawnChance: '0.00001%' },
+  [TreeType.WorldTree]: { health: 2500, woodDrop: 12500, hitboxRadius: 20, spawnChance: '0.000001%' },
 };
 
 export interface WoodDrop {
@@ -246,6 +246,7 @@ export const WORKER_UPGRADE_COSTS = {
 export enum WaypointType {
   Chopper = 'chopper',
   Collector = 'collector',
+  CollectorWood = 'collector_wood',  // Alternative waypoint for wood collection
   Player = 'player',
 }
 
@@ -289,6 +290,14 @@ export interface GameState {
   appleBuff: AppleBuff;
   // Tree checklist - tracks which tree types have been chopped
   choppedTreeTypes: Set<TreeType>;
+  // Tree chopped counts - tracks how many of each type have been chopped
+  treeChoppedCounts: Map<TreeType, number>;
+  // Apple drop notification
+  appleDropNotification: { active: boolean; timer: number };
+  // Chunks with tree respawning disabled (platinum chunks only)
+  noRespawnChunks: Set<string>;
+  // UI visibility
+  uiHidden: boolean;
 }
 
 export interface SpriteSheet {

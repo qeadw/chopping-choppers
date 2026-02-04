@@ -158,15 +158,22 @@ export function generateChunk(chunkX: number, chunkY: number, config: GameConfig
   };
 }
 
-export function updateTrees(chunks: Map<string, Chunk>, deltaTime: number, config: GameConfig): void {
+export function updateTrees(chunks: Map<string, Chunk>, deltaTime: number, config: GameConfig, noRespawnChunks?: Set<string>): void {
   for (const chunk of chunks.values()) {
+    // Check if this chunk has respawning disabled
+    const chunkKey = `${chunk.x},${chunk.y}`;
+    const respawnDisabled = noRespawnChunks?.has(chunkKey) ?? false;
+
     for (const tree of chunk.trees) {
       if (tree.isDead) {
         tree.respawnTimer -= deltaTime;
-        if (tree.respawnTimer <= 0) {
+        if (tree.respawnTimer <= 0 && !respawnDisabled) {
           // Respawn tree
           tree.isDead = false;
           tree.health = tree.maxHealth;
+          tree.respawnTimer = 0;
+        } else if (tree.respawnTimer <= 0 && respawnDisabled) {
+          // Keep timer at 0 but don't respawn
           tree.respawnTimer = 0;
         }
       }
