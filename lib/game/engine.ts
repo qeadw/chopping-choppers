@@ -107,6 +107,8 @@ export class GameEngine {
   private catchUpTimeRemaining: number = 0; // Time left to simulate at accelerated rate
   private waypointPlacementMode: WaypointType | null = null; // Current waypoint placement mode
   private regenCooldown: number = 0; // Cooldown timer for regenerate chunks button
+  private saveBuffer: string = ''; // Buffer for detecting "save" typed
+  public onSaveRequested: (() => void) | null = null; // Callback when save modal requested
 
   // Generate a unique world seed using crypto API for better randomness
   private generateWorldSeed(): number {
@@ -206,6 +208,18 @@ export class GameEngine {
     // C = Toggle choppers, V = Toggle collectors
     // When zoomed out: Q = Place chopper waypoint, R = Place collector waypoint, X = Clear waypoints
     this.hireKeyHandler = (e: KeyboardEvent) => {
+      // Save code detection
+      if (e.key.length === 1) {
+        this.saveBuffer = (this.saveBuffer + e.key).slice(-4);
+        if (this.saveBuffer.toLowerCase() === 'save') {
+          this.saveBuffer = '';
+          if (this.onSaveRequested) {
+            this.onSaveRequested();
+          }
+          return;
+        }
+      }
+
       const key = e.key.toLowerCase();
       if (key === 'j') {
         this.hireWorker(WorkerType.Chopper);

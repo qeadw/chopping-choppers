@@ -9,7 +9,6 @@ export default function Game() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<GameEngine | null>(null);
   const [showSaveModal, setShowSaveModal] = useState(false);
-  const saveBufferRef = useRef('');
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -22,6 +21,10 @@ export default function Game() {
     // Create and start game engine
     const engine = new GameEngine(canvas);
     engineRef.current = engine;
+
+    // Wire up save modal callback from engine
+    engine.onSaveRequested = () => setShowSaveModal(true);
+
     engine.start();
 
     // Handle window resize
@@ -29,24 +32,11 @@ export default function Game() {
       engine.resize(window.innerWidth, window.innerHeight);
     };
 
-    // Handle save code detection
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key.length === 1) {
-        saveBufferRef.current = (saveBufferRef.current + e.key).slice(-4);
-        if (saveBufferRef.current.toLowerCase() === 'save') {
-          setShowSaveModal(true);
-          saveBufferRef.current = '';
-        }
-      }
-    };
-
     window.addEventListener('resize', handleResize);
-    window.addEventListener('keydown', handleKeyDown);
 
     // Cleanup
     return () => {
       window.removeEventListener('resize', handleResize);
-      window.removeEventListener('keydown', handleKeyDown);
       engine.stop();
     };
   }, []);
