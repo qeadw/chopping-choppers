@@ -31,6 +31,27 @@ let waypointIdCounter = 0;
 
 const SAVE_KEY = 'chopping_choppers_save';
 const SAVE_INTERVAL = 5000; // Save every 5 seconds
+const SAVE_VERSION = 'CC1:';
+const OBF_KEY = 'ChoppingChoppers2024';
+
+function obfuscateSave(data: string): string {
+  let result = '';
+  for (let i = 0; i < data.length; i++) {
+    result += String.fromCharCode(data.charCodeAt(i) ^ OBF_KEY.charCodeAt(i % OBF_KEY.length));
+  }
+  return SAVE_VERSION + btoa(result);
+}
+
+function deobfuscateSave(data: string): string {
+  if (!data.startsWith(SAVE_VERSION)) return data; // Legacy save
+  const encoded = data.slice(SAVE_VERSION.length);
+  const decoded = atob(encoded);
+  let result = '';
+  for (let i = 0; i < decoded.length; i++) {
+    result += String.fromCharCode(decoded.charCodeAt(i) ^ OBF_KEY.charCodeAt(i % OBF_KEY.length));
+  }
+  return result;
+}
 
 interface DeadTreeData {
   id: string;
@@ -471,7 +492,7 @@ export class GameEngine {
         waypoints: this.state.waypoints.map(w => ({ x: w.x, y: w.y, type: w.type })),
         playerWaypoint: this.state.playerWaypoint,
       };
-      localStorage.setItem(SAVE_KEY, JSON.stringify(saveData));
+      localStorage.setItem(SAVE_KEY, obfuscateSave(JSON.stringify(saveData)));
     } catch (e) {
       console.warn('Failed to save progress:', e);
     }
@@ -482,7 +503,7 @@ export class GameEngine {
       const saved = localStorage.getItem(SAVE_KEY);
       if (!saved) return;
 
-      const data: SaveData = JSON.parse(saved);
+      const data: SaveData = JSON.parse(deobfuscateSave(saved));
 
       // Restore money, wood, and stats
       this.state.money = data.money || 0;

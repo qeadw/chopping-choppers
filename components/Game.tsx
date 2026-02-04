@@ -47,11 +47,11 @@ export default function Game() {
       alert('No save data found!');
       return;
     }
-    const blob = new Blob([saveData], { type: 'application/json' });
+    const blob = new Blob([saveData], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `chopping-choppers-save-${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `chopping-choppers-save-${new Date().toISOString().split('T')[0]}.sav`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -63,10 +63,10 @@ export default function Game() {
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
-        const data = JSON.parse(event.target?.result as string);
-        // Validate it looks like a save file
-        if (typeof data.money !== 'number' && typeof data.totalWoodChopped !== 'number') {
-          alert('This does not appear to be a valid Chopping Choppers save file!');
+        const saveData = event.target?.result as string;
+        // Validate it's an obfuscated save
+        if (!saveData.startsWith('CC1:')) {
+          alert('Invalid save file format!');
           return;
         }
 
@@ -77,14 +77,12 @@ export default function Game() {
           engineRef.current = null;
         }
 
-        const saveString = JSON.stringify(data);
-        localStorage.setItem(SAVE_KEY, saveString);
-
-        alert(`Save imported! Money: $${data.money || 0}, Total Wood: ${data.totalWoodChopped || 0}. Refreshing...`);
+        localStorage.setItem(SAVE_KEY, saveData);
+        alert('Save imported successfully! Refreshing...');
         window.location.reload();
       } catch (err) {
         console.error('Import error:', err);
-        alert('Invalid save file! Could not parse JSON.');
+        alert('Invalid save file!');
       }
     };
     reader.readAsText(file);
@@ -138,7 +136,7 @@ export default function Game() {
               </button>
               <label style={{ padding: '12px', background: '#49a', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer', textAlign: 'center' }}>
                 📤 Import Save
-                <input type="file" accept=".json" onChange={importSave} style={{ display: 'none' }} />
+                <input type="file" accept=".sav" onChange={importSave} style={{ display: 'none' }} />
               </label>
               <button onClick={() => setShowSaveModal(false)} style={{ padding: '12px', background: '#666', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer', marginTop: '10px' }}>
                 Close
