@@ -398,7 +398,7 @@ export class GameEngine {
     this.gameLoop(this.lastTime);
   }
 
-  stop(): void {
+  stop(skipSave: boolean = false): void {
     if (this.animationId) {
       cancelAnimationFrame(this.animationId);
       this.animationId = 0;
@@ -407,7 +407,9 @@ export class GameEngine {
       clearInterval(this.saveIntervalId);
       this.saveIntervalId = 0;
     }
-    this.saveProgress(); // Save on stop
+    if (!skipSave) {
+      this.saveProgress(); // Save on stop (unless importing)
+    }
     this.cleanupInput();
     window.removeEventListener('keydown', this.upgradeKeyHandler);
     window.removeEventListener('keydown', this.hireKeyHandler);

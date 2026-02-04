@@ -69,7 +69,17 @@ export default function Game() {
           alert('This does not appear to be a valid Chopping Choppers save file!');
           return;
         }
-        localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+
+        // IMPORTANT: Stop the engine WITHOUT saving before setting localStorage
+        // Otherwise the engine's save would overwrite our import
+        if (engineRef.current) {
+          engineRef.current.stop(true); // true = skip saving
+          engineRef.current = null;
+        }
+
+        const saveString = JSON.stringify(data);
+        localStorage.setItem(SAVE_KEY, saveString);
+
         alert(`Save imported! Money: $${data.money || 0}, Total Wood: ${data.totalWoodChopped || 0}. Refreshing...`);
         window.location.reload();
       } catch (err) {
