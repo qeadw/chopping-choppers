@@ -199,6 +199,15 @@ const COLORS = {
     cap: '#CC4444',
     capDark: '#993333',
   },
+  apple: {
+    red: '#E53935',
+    redDark: '#B71C1C',
+    redLight: '#EF5350',
+    highlight: '#FF8A80',
+    stemBrown: '#5D4037',
+    leafGreen: '#4CAF50',
+    leafDark: '#2E7D32',
+  },
 };
 
 function createCanvas(width: number, height: number): HTMLCanvasElement {
@@ -2089,6 +2098,103 @@ function createShackSprite(): HTMLCanvasElement {
   return canvas;
 }
 
+function createAppleSprite(): HTMLCanvasElement {
+  const canvas = createCanvas(10, 12);
+  const ctx = canvas.getContext('2d')!;
+  const { red, redDark, redLight, highlight, stemBrown, leafGreen, leafDark } = COLORS.apple;
+
+  // Stem
+  setPixel(ctx, 5, 0, stemBrown);
+  setPixel(ctx, 5, 1, stemBrown);
+
+  // Leaf
+  setPixel(ctx, 6, 1, leafDark);
+  setPixel(ctx, 7, 1, leafGreen);
+  setPixel(ctx, 7, 2, leafGreen);
+
+  // Apple body - round shape
+  // Top row
+  setPixel(ctx, 3, 2, redDark);
+  setPixel(ctx, 4, 2, red);
+  setPixel(ctx, 5, 2, red);
+  setPixel(ctx, 6, 2, redLight);
+
+  // Middle rows (widest part)
+  for (let y = 3; y <= 7; y++) {
+    setPixel(ctx, 2, y, redDark);
+    setPixel(ctx, 3, y, y < 5 ? red : redDark);
+    setPixel(ctx, 4, y, red);
+    setPixel(ctx, 5, y, red);
+    setPixel(ctx, 6, y, redLight);
+    setPixel(ctx, 7, y, redLight);
+  }
+
+  // Highlight on apple
+  setPixel(ctx, 3, 4, highlight);
+  setPixel(ctx, 4, 4, highlight);
+  setPixel(ctx, 3, 5, highlight);
+
+  // Bottom row - indent
+  setPixel(ctx, 3, 8, redDark);
+  setPixel(ctx, 4, 8, red);
+  setPixel(ctx, 5, 8, red);
+  setPixel(ctx, 6, 8, redLight);
+
+  // Very bottom
+  setPixel(ctx, 4, 9, redDark);
+  setPixel(ctx, 5, 9, red);
+
+  return canvas;
+}
+
+function createApplePileSprite(): HTMLCanvasElement {
+  const canvas = createCanvas(24, 20);
+  const ctx = canvas.getContext('2d')!;
+  const { red, redDark, redLight, highlight, stemBrown, leafGreen } = COLORS.apple;
+
+  // Draw multiple apples in a pile
+  // Helper to draw a small apple at position
+  const drawSmallApple = (ox: number, oy: number) => {
+    // Stem
+    setPixel(ctx, ox + 3, oy, stemBrown);
+    // Leaf
+    setPixel(ctx, ox + 4, oy, leafGreen);
+
+    // Apple body
+    setPixel(ctx, ox + 2, oy + 1, redDark);
+    setPixel(ctx, ox + 3, oy + 1, red);
+    setPixel(ctx, ox + 4, oy + 1, redLight);
+
+    for (let y = 2; y <= 4; y++) {
+      setPixel(ctx, ox + 1, oy + y, redDark);
+      setPixel(ctx, ox + 2, oy + y, red);
+      setPixel(ctx, ox + 3, oy + y, red);
+      setPixel(ctx, ox + 4, oy + y, redLight);
+      setPixel(ctx, ox + 5, oy + y, redLight);
+    }
+
+    // Highlight
+    setPixel(ctx, ox + 2, oy + 2, highlight);
+    setPixel(ctx, ox + 2, oy + 3, highlight);
+
+    // Bottom
+    setPixel(ctx, ox + 2, oy + 5, redDark);
+    setPixel(ctx, ox + 3, oy + 5, red);
+    setPixel(ctx, ox + 4, oy + 5, redLight);
+  };
+
+  // Back row (2 apples)
+  drawSmallApple(4, 2);
+  drawSmallApple(12, 2);
+
+  // Front row (3 apples, slightly overlapping)
+  drawSmallApple(0, 8);
+  drawSmallApple(8, 8);
+  drawSmallApple(16, 8);
+
+  return canvas;
+}
+
 export function createSpriteSheet(): SpriteSheet {
   return {
     trees: [
@@ -2135,6 +2241,8 @@ export function createSpriteSheet(): SpriteSheet {
     chipper: createChipperSprite(),
     shack: createShackSprite(),
     axe: createAxeSprite(),
+    apple: createAppleSprite(),
+    applePile: createApplePileSprite(),
   };
 }
 

@@ -79,6 +79,25 @@ export interface WoodDrop {
   bobOffset: number;
 }
 
+export interface AppleDrop {
+  id: string;
+  x: number;
+  y: number;
+}
+
+export interface ApplePile {
+  x: number;
+  y: number;
+  count: number;
+}
+
+export interface AppleBuff {
+  active: boolean;
+  remainingTime: number;
+  speedMultiplier: number;
+  damageMultiplier: number;
+}
+
 export interface Chunk {
   x: number;
   y: number;
@@ -137,6 +156,9 @@ export enum WorkerState {
   Selling = 'selling',
   GoingToRest = 'going_to_rest',
   Resting = 'resting',
+  MovingToApple = 'moving_to_apple',
+  CollectingApple = 'collecting_apple',
+  ReturningWithApple = 'returning_with_apple',
 }
 
 export interface Worker {
@@ -165,6 +187,9 @@ export interface Worker {
   phaseTimer: number;        // Time remaining to phase through trees
   // Search expansion
   searchRadius: number;      // Extra chunks to search (0-5)
+  // Apple collection (collectors only)
+  targetApple: AppleDrop | null;
+  carryingApple: boolean;
 }
 
 export const CHOPPER_COSTS = [100, 150, 225, 350, 500, 750, 1100];
@@ -258,6 +283,12 @@ export interface GameState {
   collectorsEnabled: boolean; // Whether collectors are active
   waypoints: Waypoint[];  // Worker waypoints for directing them
   playerWaypoint: { x: number; y: number } | null;  // Player navigation waypoint
+  // Apple feature
+  appleDrops: AppleDrop[];
+  applePile: ApplePile;
+  appleBuff: AppleBuff;
+  // Tree checklist - tracks which tree types have been chopped
+  choppedTreeTypes: Set<TreeType>;
 }
 
 export interface SpriteSheet {
@@ -273,6 +304,8 @@ export interface SpriteSheet {
   chipper: HTMLCanvasElement;
   shack: HTMLCanvasElement;
   axe: HTMLCanvasElement;
+  apple: HTMLCanvasElement;
+  applePile: HTMLCanvasElement;
 }
 
 export interface GameConfig {

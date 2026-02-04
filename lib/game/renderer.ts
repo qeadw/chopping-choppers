@@ -1,4 +1,4 @@
-import { GameState, SpriteSheet, GameConfig, Tree, WoodDrop, Particle, FloatingText, Worker, WorkerType, WorkerState, UPGRADE_COSTS, CHOPPER_COSTS, COLLECTOR_COSTS, WORKER_UPGRADE_COSTS, WaypointType } from '../types';
+import { GameState, SpriteSheet, GameConfig, Tree, WoodDrop, Particle, FloatingText, Worker, WorkerType, WorkerState, UPGRADE_COSTS, CHOPPER_COSTS, COLLECTOR_COSTS, WORKER_UPGRADE_COSTS, WaypointType, TreeType, TREE_STATS } from '../types';
 import { chunkKey } from './forest';
 import { getTreeSprite } from './sprites';
 
@@ -12,7 +12,9 @@ export function render(
   config: GameConfig,
   catchUpTime: number = 0,
   waypointMode: WaypointType | null = null,
-  regenCooldown: number = 0
+  regenCooldown: number = 0,
+  cheatMenuOpen: boolean = false,
+  treeChecklistOpen: boolean = false
 ): void {
   const { camera, player, chunks } = state;
   const baseScale = config.pixelScale;
@@ -96,6 +98,16 @@ export function render(
     drawWoodDrop(ctx, drop, effectiveCamera, sprites, scale);
   }
 
+  // Draw apple drops
+  for (const apple of state.appleDrops) {
+    drawAppleDrop(ctx, apple, effectiveCamera, sprites, scale);
+  }
+
+  // Draw apple pile (if there are apples)
+  if (state.applePile.count > 0 || true) {  // Always draw pile location
+    drawApplePile(ctx, state, effectiveCamera, sprites, scale);
+  }
+
   // Draw particles
   for (const particle of state.particles) {
     drawParticle(ctx, particle, effectiveCamera, scale);
@@ -118,6 +130,16 @@ export function render(
 
   // Draw UI (always at normal scale)
   drawUI(ctx, state, sprites, config, regenCooldown);
+
+  // Draw cheat menu if open
+  if (cheatMenuOpen) {
+    drawCheatMenu(ctx, state);
+  }
+
+  // Draw tree checklist if open
+  if (treeChecklistOpen) {
+    drawTreeChecklist(ctx, state, sprites);
+  }
 
   // Draw player waypoint off-screen indicator when zoomed in
   if (camera.zoom >= 0.5 && state.playerWaypoint) {
@@ -348,6 +370,91 @@ function drawWoodDrop(
     ctx.font = `bold ${8 * scale}px monospace`;
     ctx.textAlign = 'center';
     ctx.fillText(`${drop.amount}`, screenX + 4 * scale, screenY - 2 * scale);
+  }
+}
+
+function drawAppleDrop(
+  ctx: CanvasRenderingContext2D,
+  apple: { id: string; x: number; y: number },
+  camera: { x: number; y: number },
+  sprites: SpriteSheet,
+  scale: number
+): void {
+  // Bob animation using apple id hash
+  const hashNum = apple.id.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
+  const bobY = Math.sin(hashNum + performance.now() / 200) * 2;
+
+  const screenX = (apple.x - camera.x - sprites.apple.width / 2) * scale;
+  const screenY = (apple.y - camera.y - sprites.apple.height / 2 + bobY) * scale;
+
+  ctx.drawImage(
+    sprites.apple,
+    screenX,
+    screenY,
+    sprites.apple.width * scale,
+    sprites.apple.height * scale
+  );
+}
+
+function drawApplePile(
+  ctx: CanvasRenderingContext2D,
+  state: GameState,
+  camera: { x: number; y: number },
+  sprites: SpriteSheet,
+  scale: number
+): void {
+  const { applePile, player } = state;
+
+  const screenX = (applePile.x - camera.x - sprites.applePile.width / 2) * scale;
+  const screenY = (applePile.y - camera.y - sprites.applePile.height / 2) * scale;
+
+  // Draw pile sprite if there are apples
+  if (applePile.count > 0) {
+    ctx.drawImage(
+      sprites.applePile,
+      screenX,
+      screenY,
+      sprites.applePile.width * scale,
+      sprites.applePile.height * scale
+    );
+
+    // Draw apple count
+    ctx.fillStyle = '#fff';
+    ctx.font = `bold ${10 * scale}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillText(`x${applePile.count}`, screenX + sprites.applePile.width * scale / 2, screenY - 5 * scale);
+  } else {
+    // Draw a small marker when empty
+    ctx.fillStyle = '#555';
+    ctx.beginPath();
+    ctx.arc(
+      (applePile.x - camera.x) * scale,
+      (applePile.y - camera.y) * scale,
+      4 * scale,
+      0,
+      Math.PI * 2
+    );
+    ctx.fill();
+  }
+
+  // Check if player is near and has apples to eat
+  const dx = player.position.x - applePile.x;
+  const dy = player.position.y - applePile.y;
+  const distance = Math.sqrt(dx * dx + dy * dy);
+
+  if (distance < 60 && applePile.count > 0) {
+    // Glow effect
+    ctx.strokeStyle = '#E53935';
+    ctx.lineWidth = 2;
+    const pileW = sprites.applePile.width * scale;
+    const pileH = sprites.applePile.height * scale;
+    ctx.strokeRect(screenX - 2, screenY - 2, pileW + 4, pileH + 4);
+
+    // Prompt
+    ctx.fillStyle = '#E53935';
+    ctx.font = `bold ${10 * scale}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillText('[E] Eat Apple', screenX + pileW / 2, screenY - 15 * scale);
   }
 }
 
@@ -616,6 +723,39 @@ function drawUI(
     ctx.fillText('(Reset unloaded areas)', regenButtonX + regenButtonW / 2, regenButtonY + 26);
   }
 
+  // Teleport Home button (right side, below regenerate)
+  const teleportButtonX = regenButtonX;
+  const teleportButtonY = regenButtonY + regenButtonH + 8;
+  const teleportButtonW = regenButtonW;
+  const teleportButtonH = 32;
+
+  // Calculate teleport cost (8 coins per chunk distance from origin)
+  const playerChunkX = Math.floor(state.player.position.x / config.chunkSize);
+  const playerChunkY = Math.floor(state.player.position.y / config.chunkSize);
+  const chunkDistance = Math.abs(playerChunkX) + Math.abs(playerChunkY);
+  const teleportCost = chunkDistance * 8;
+  const canAffordTeleport = state.money >= teleportCost;
+  const atHome = chunkDistance === 0;
+
+  // Button background
+  ctx.fillStyle = atHome ? 'rgba(40, 40, 40, 0.85)' : (canAffordTeleport ? 'rgba(40, 80, 40, 0.85)' : 'rgba(80, 40, 40, 0.85)');
+  ctx.fillRect(teleportButtonX, teleportButtonY, teleportButtonW, teleportButtonH);
+  ctx.strokeStyle = atHome ? '#666666' : (canAffordTeleport ? '#66AA66' : '#AA6666');
+  ctx.lineWidth = 2;
+  ctx.strokeRect(teleportButtonX, teleportButtonY, teleportButtonW, teleportButtonH);
+
+  ctx.fillStyle = atHome ? '#888888' : (canAffordTeleport ? '#AAFFAA' : '#FFAAAA');
+  ctx.font = 'bold 12px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('TELEPORT HOME', teleportButtonX + teleportButtonW / 2, teleportButtonY + 14);
+  ctx.fillStyle = atHome ? '#666666' : (canAffordTeleport ? '#88CC88' : '#CC8888');
+  ctx.font = '10px monospace';
+  if (atHome) {
+    ctx.fillText('(Already at home)', teleportButtonX + teleportButtonW / 2, teleportButtonY + 26);
+  } else {
+    ctx.fillText(`Cost: $${teleportCost} (${chunkDistance} chunks)`, teleportButtonX + teleportButtonW / 2, teleportButtonY + 26);
+  }
+
   // Bottom: Controls hint (two lines)
   ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
   const controlsY = ctx.canvas.height - 50;
@@ -626,6 +766,33 @@ function drawUI(
   ctx.textAlign = 'left';
   ctx.fillText('WASD: Move | Click: Chop | E: Sell | J/K: Hire | C/V: Toggle workers | T: Timers | Scroll: Zoom', padding + 10, controlsY + 14);
   ctx.fillText('Zoomed out: Q: Chopper waypoint | R: Collector waypoint | F: Player waypoint | X: Clear all', padding + 10, controlsY + 30);
+
+  // Apple buff timer display
+  if (state.appleBuff.active && state.appleBuff.remainingTime > 0) {
+    const buffY = 60;
+    const buffWidth = 250;
+    const buffHeight = 40;
+    const buffX = (ctx.canvas.width - buffWidth) / 2;
+
+    // Background with glow effect
+    ctx.fillStyle = 'rgba(229, 57, 53, 0.85)';  // Apple red
+    ctx.fillRect(buffX, buffY, buffWidth, buffHeight);
+
+    // Pulsing border
+    const pulse = Math.sin(performance.now() / 100) * 0.3 + 0.7;
+    ctx.strokeStyle = `rgba(255, 138, 128, ${pulse})`;  // Light red
+    ctx.lineWidth = 3;
+    ctx.strokeRect(buffX, buffY, buffWidth, buffHeight);
+
+    // Text
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 14px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('APPLE BUFF ACTIVE!', ctx.canvas.width / 2, buffY + 16);
+
+    ctx.font = 'bold 12px monospace';
+    ctx.fillText(`5x Speed | 2x Damage | ${state.appleBuff.remainingTime.toFixed(1)}s`, ctx.canvas.width / 2, buffY + 32);
+  }
 
   // Capacity warning
   const playerCapacity = Math.floor(10 * Math.pow(1.5, state.upgrades.carryCapacity - 1));
@@ -1066,4 +1233,178 @@ function drawCatchUpIndicator(
   const pulse = Math.sin(Date.now() / 200) * 0.2 + 0.8;
   ctx.fillStyle = `rgba(136, 255, 255, ${pulse})`;
   ctx.fillRect(barX, barY, barWidth * pulse, barHeight);
+}
+
+function drawCheatMenu(
+  ctx: CanvasRenderingContext2D,
+  state: GameState
+): void {
+  const menuWidth = 280;
+  const menuHeight = 200;
+  const menuX = (ctx.canvas.width - menuWidth) / 2;
+  const menuY = (ctx.canvas.height - menuHeight) / 2;
+
+  // Darken background
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+  // Menu background
+  ctx.fillStyle = 'rgba(40, 20, 60, 0.95)';
+  ctx.fillRect(menuX, menuY, menuWidth, menuHeight);
+
+  // Menu border
+  ctx.strokeStyle = '#FF00FF';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(menuX, menuY, menuWidth, menuHeight);
+
+  // Title
+  ctx.fillStyle = '#FF00FF';
+  ctx.font = 'bold 18px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('CHEAT MENU', menuX + menuWidth / 2, menuY + 28);
+
+  // Subtitle
+  ctx.fillStyle = '#888';
+  ctx.font = '10px monospace';
+  ctx.fillText('Press ` to close', menuX + menuWidth / 2, menuY + 42);
+
+  // Cheat options
+  ctx.textAlign = 'left';
+  ctx.font = '14px monospace';
+  const options = [
+    { key: 'M', label: 'Add $1000', id: 'money1k' },
+    { key: 'N', label: 'Add $10000', id: 'money10k' },
+    { key: 'B', label: 'Add $100000', id: 'money100k' },
+    { key: 'L', label: 'Open Tree Checklist', id: 'checklist' },
+    { key: 'G', label: 'Fill Tree Checklist', id: 'fillchecklist' },
+  ];
+
+  let y = menuY + 70;
+  for (const opt of options) {
+    ctx.fillStyle = '#FF88FF';
+    ctx.fillText(`[${opt.key}]`, menuX + 20, y);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(opt.label, menuX + 60, y);
+    y += 26;
+  }
+}
+
+function drawTreeChecklist(
+  ctx: CanvasRenderingContext2D,
+  state: GameState,
+  sprites: SpriteSheet
+): void {
+  const menuWidth = 450;
+  const menuHeight = 500;
+  const menuX = (ctx.canvas.width - menuWidth) / 2;
+  const menuY = (ctx.canvas.height - menuHeight) / 2;
+
+  // Darken background
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+  // Menu background
+  ctx.fillStyle = 'rgba(20, 40, 30, 0.95)';
+  ctx.fillRect(menuX, menuY, menuWidth, menuHeight);
+
+  // Menu border
+  ctx.strokeStyle = '#4a8';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(menuX, menuY, menuWidth, menuHeight);
+
+  // Title
+  ctx.fillStyle = '#4f8';
+  ctx.font = 'bold 18px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('TREE CHECKLIST', menuX + menuWidth / 2, menuY + 28);
+
+  // Subtitle - count discovered
+  const discoveredCount = state.choppedTreeTypes.size;
+  const totalCount = 15; // TreeType goes from 0 to 14
+  ctx.fillStyle = '#888';
+  ctx.font = '12px monospace';
+  ctx.fillText(`${discoveredCount}/${totalCount} discovered - Press L to close`, menuX + menuWidth / 2, menuY + 46);
+
+  // Tree list with stats
+  ctx.textAlign = 'left';
+  const treeNames = [
+    'Small Pine', 'Large Pine', 'Oak', 'Dead Tree', 'Birch',
+    'Willow', 'Cherry Blossom', 'Giant Redwood', 'Ancient Oak', 'Magic Tree',
+    'Crystal Tree', 'Void Tree', 'Cosmic Tree', 'Divine Tree', 'World Tree'
+  ];
+
+  const rarityColors: Record<number, string> = {
+    0: '#888888', // Common
+    1: '#888888',
+    2: '#888888',
+    3: '#888888',
+    4: '#888888',
+    5: '#4488ff', // Uncommon
+    6: '#44ff88', // Rare
+    7: '#ff8844', // Epic
+    8: '#ff44ff', // Legendary
+    9: '#ffff44', // Magic
+    10: '#88ffff', // Crystal
+    11: '#8844ff', // Void
+    12: '#ff88ff', // Cosmic
+    13: '#ffffff', // Divine
+    14: '#ffd700', // World Tree
+  };
+
+  let y = menuY + 72;
+  const rowHeight = 28;
+
+  for (let i = 0; i < 15; i++) {
+    const treeType = i as TreeType;
+    const discovered = state.choppedTreeTypes.has(treeType);
+    const stats = TREE_STATS[treeType];
+    const color = rarityColors[i] || '#888';
+
+    // Draw tree sprite if discovered (scaled down)
+    if (discovered) {
+      const sprite = sprites.trees[i];
+      if (sprite) {
+        ctx.drawImage(sprite, menuX + 15, y - 14, 18, 24);
+      }
+    } else {
+      // Draw question mark for undiscovered
+      ctx.fillStyle = '#444';
+      ctx.font = 'bold 18px monospace';
+      ctx.fillText('?', menuX + 20, y + 4);
+    }
+
+    // Tree name
+    ctx.font = '13px monospace';
+    if (discovered) {
+      ctx.fillStyle = color;
+      ctx.fillText(treeNames[i], menuX + 45, y);
+    } else {
+      ctx.fillStyle = '#444';
+      ctx.fillText('???', menuX + 45, y);
+    }
+
+    // Stats (always show if discovered)
+    if (discovered) {
+      ctx.font = '11px monospace';
+      ctx.fillStyle = '#aaa';
+      const healthText = `HP: ${stats.health}`;
+      const woodText = `Wood: ${stats.woodDrop}`;
+      const hitboxText = `Size: ${stats.hitboxRadius}`;
+      ctx.fillText(healthText, menuX + 180, y);
+      ctx.fillText(woodText, menuX + 260, y);
+      ctx.fillText(hitboxText, menuX + 350, y);
+    }
+
+    // Checkmark or X
+    ctx.font = 'bold 14px monospace';
+    if (discovered) {
+      ctx.fillStyle = '#4f8';
+      ctx.fillText('✓', menuX + menuWidth - 30, y);
+    } else {
+      ctx.fillStyle = '#844';
+      ctx.fillText('✗', menuX + menuWidth - 30, y);
+    }
+
+    y += rowHeight;
+  }
 }

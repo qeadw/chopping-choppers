@@ -7,6 +7,7 @@ import {
   Particle,
   FloatingText,
   Tree,
+  TreeType,
   Worker,
   WorkerType,
   WorkerState,
@@ -18,6 +19,7 @@ import {
   Position,
   Waypoint,
   WaypointType,
+  AppleDrop,
 } from '../types';
 import { createPlayer, updatePlayer, createCamera, updateCamera, canChop, startChop } from './player';
 import { createInputState, setupInputHandlers } from './input';
@@ -28,6 +30,7 @@ import { createSpriteSheet } from './sprites';
 let dropIdCounter = 0;
 let workerIdCounter = 0;
 let waypointIdCounter = 0;
+let appleIdCounter = 0;
 
 const SAVE_KEY = 'chopping_choppers_save';
 const SAVE_INTERVAL = 5000; // Save every 5 seconds
@@ -104,6 +107,12 @@ interface SaveData {
   collectorsEnabled?: boolean;
   waypoints?: { x: number; y: number; type: string }[];
   playerWaypoint?: { x: number; y: number } | null;
+  // Apple feature
+  appleDrops?: { x: number; y: number }[];
+  applePileCount?: number;
+  appleBuffRemaining?: number;
+  // Tree checklist
+  choppedTreeTypes?: number[];
 }
 
 export class GameEngine {
@@ -131,6 +140,8 @@ export class GameEngine {
   private saveBuffer: string = ''; // Buffer for detecting "save" typed
   public onSaveRequested: (() => void) | null = null; // Callback when save modal requested
   private stopped: boolean = false; // Prevent double-stop from saving twice
+  private cheatMenuOpen: boolean = false; // Whether cheat menu is visible
+  private treeChecklistOpen: boolean = false; // Whether tree checklist is visible
 
   // Generate a unique world seed using crypto API for better randomness
   private generateWorldSeed(): number {
@@ -203,6 +214,12 @@ export class GameEngine {
       collectorsEnabled: true,
       waypoints: [],
       playerWaypoint: null,
+      // Apple feature
+      appleDrops: [],
+      applePile: { x: -90, y: -50, count: 0 },  // Left of chipper
+      appleBuff: { active: false, remainingTime: 0, speedMultiplier: 5, damageMultiplier: 2 },
+      // Tree checklist
+      choppedTreeTypes: new Set(),
     };
 
     // Load saved progress
@@ -288,6 +305,24 @@ export class GameEngine {
         this.state.waypoints = [];
         this.state.playerWaypoint = null;
         this.addFloatingText(this.state.player.position.x, this.state.player.position.y - 30, 'Waypoints cleared', '#AAAAAA');
+      } else if (key === '`' || key === '~') {
+        // Toggle cheat menu
+        this.toggleCheatMenu();
+      } else if (key === 'l') {
+        // Toggle tree checklist
+        this.toggleTreeChecklist();
+      } else if (this.cheatMenuOpen) {
+        // Cheat menu actions
+        if (key === 'm') {
+          this.addCheatMoney(1000);
+        } else if (key === 'n') {
+          this.addCheatMoney(10000);
+        } else if (key === 'b') {
+          this.addCheatMoney(100000);
+        } else if (key === 'g') {
+          this.fillTreeChecklist();
+          this.addFloatingText(this.state.player.position.x, this.state.player.position.y - 30, 'Tree checklist filled!', '#FF00FF');
+        }
       }
     };
     window.addEventListener('keydown', this.hireKeyHandler);
@@ -338,6 +373,18 @@ export class GameEngine {
           this.regenerateUnloadedChunks();
           this.regenCooldown = 150; // 150 second cooldown
         }
+        return;
+      }
+
+      // Check for teleport home button click
+      const teleportButtonX = regenButtonX;
+      const teleportButtonY = regenButtonY + regenButtonH + 8; // 8px gap below regen button
+      const teleportButtonW = regenButtonW;
+      const teleportButtonH = 32;
+
+      if (screenX >= teleportButtonX && screenX <= teleportButtonX + teleportButtonW &&
+          screenY >= teleportButtonY && screenY <= teleportButtonY + teleportButtonH) {
+        this.teleportHome();
         return;
       }
 
@@ -470,6 +517,9 @@ export class GameEngine {
         lifetime: d.lifetime,
       }));
 
+      // Save apple drops
+      const appleDrops = this.state.appleDrops.map(a => ({ x: a.x, y: a.y }));
+
       const saveData: SaveData = {
         money: this.state.money,
         wood: this.state.wood,
@@ -491,6 +541,12 @@ export class GameEngine {
         collectorsEnabled: this.state.collectorsEnabled,
         waypoints: this.state.waypoints.map(w => ({ x: w.x, y: w.y, type: w.type })),
         playerWaypoint: this.state.playerWaypoint,
+        // Apple feature
+        appleDrops,
+        applePileCount: this.state.applePile.count,
+        appleBuffRemaining: this.state.appleBuff.remainingTime,
+        // Tree checklist
+        choppedTreeTypes: Array.from(this.state.choppedTreeTypes),
       };
       localStorage.setItem(SAVE_KEY, obfuscateSave(JSON.stringify(saveData)));
     } catch (e) {
@@ -647,6 +703,27 @@ export class GameEngine {
         this.state.playerWaypoint = data.playerWaypoint;
       }
 
+      // Restore apple feature
+      if (data.appleDrops && data.appleDrops.length > 0) {
+        this.state.appleDrops = data.appleDrops.map(a => ({
+          id: `apple_${appleIdCounter++}`,
+          x: a.x,
+          y: a.y,
+        }));
+      }
+      if (data.applePileCount !== undefined) {
+        this.state.applePile.count = data.applePileCount;
+      }
+      if (data.appleBuffRemaining !== undefined && data.appleBuffRemaining > 0) {
+        this.state.appleBuff.remainingTime = data.appleBuffRemaining;
+        this.state.appleBuff.active = true;
+      }
+
+      // Restore tree checklist
+      if (data.choppedTreeTypes && data.choppedTreeTypes.length > 0) {
+        this.state.choppedTreeTypes = new Set(data.choppedTreeTypes);
+      }
+
       console.log('Progress loaded!', {
         money: this.state.money,
         wood: this.state.wood,
@@ -775,6 +852,115 @@ export class GameEngine {
     );
   }
 
+  public getTeleportHomeCost(): number {
+    const playerChunkX = Math.floor(this.state.player.position.x / this.config.chunkSize);
+    const playerChunkY = Math.floor(this.state.player.position.y / this.config.chunkSize);
+    // Manhattan distance from origin in chunks
+    const chunkDistance = Math.abs(playerChunkX) + Math.abs(playerChunkY);
+    return chunkDistance * 8;
+  }
+
+  public teleportHome(): boolean {
+    const cost = this.getTeleportHomeCost();
+
+    if (cost === 0) {
+      this.addFloatingText(
+        this.state.player.position.x,
+        this.state.player.position.y - 30,
+        'Already at home!',
+        '#888888'
+      );
+      return false;
+    }
+
+    if (this.state.money < cost) {
+      this.addFloatingText(
+        this.state.player.position.x,
+        this.state.player.position.y - 30,
+        `Need $${cost}!`,
+        '#FF4444'
+      );
+      return false;
+    }
+
+    // Deduct cost and teleport
+    this.state.money -= cost;
+    this.state.player.position.x = 0;
+    this.state.player.position.y = 0;
+    this.state.player.velocity.x = 0;
+    this.state.player.velocity.y = 0;
+
+    // Clear player waypoint since we're home
+    this.state.playerWaypoint = null;
+
+    // Spawn particles at new location
+    this.spawnMoneyParticles(0, 0);
+
+    this.addFloatingText(0, -30, `Teleported! -$${cost}`, '#FFD700');
+    return true;
+  }
+
+  // Tree checklist methods
+  private discoverTreeType(treeType: TreeType): void {
+    const wasNew = !this.state.choppedTreeTypes.has(treeType);
+    this.state.choppedTreeTypes.add(treeType);
+
+    if (wasNew) {
+      const treeName = TreeType[treeType].replace(/([A-Z])/g, ' $1').trim();
+      this.addFloatingText(
+        this.state.player.position.x,
+        this.state.player.position.y - 50,
+        `NEW: ${treeName}!`,
+        '#FFD700'
+      );
+    }
+  }
+
+  public fillTreeChecklist(): void {
+    // Add all tree types to the checklist
+    for (let i = 0; i <= 14; i++) {
+      this.state.choppedTreeTypes.add(i as TreeType);
+    }
+    this.addFloatingText(
+      this.state.player.position.x,
+      this.state.player.position.y - 30,
+      'Checklist completed!',
+      '#FFD700'
+    );
+  }
+
+  public addCheatMoney(amount: number): void {
+    this.state.money += amount;
+    this.addFloatingText(
+      this.state.player.position.x,
+      this.state.player.position.y - 30,
+      `+$${amount} (cheat)`,
+      '#FF00FF'
+    );
+  }
+
+  public toggleCheatMenu(): void {
+    this.cheatMenuOpen = !this.cheatMenuOpen;
+    if (this.cheatMenuOpen) {
+      this.treeChecklistOpen = false; // Close checklist when opening cheat menu
+    }
+  }
+
+  public toggleTreeChecklist(): void {
+    this.treeChecklistOpen = !this.treeChecklistOpen;
+    if (this.treeChecklistOpen) {
+      this.cheatMenuOpen = false; // Close cheat menu when opening checklist
+    }
+  }
+
+  public isCheatMenuOpen(): boolean {
+    return this.cheatMenuOpen;
+  }
+
+  public isTreeChecklistOpen(): boolean {
+    return this.treeChecklistOpen;
+  }
+
   private spawnWorkerSilent(type: WorkerType): void {
     const { shack, workerUpgrades } = this.state;
     const isCollector = type === WorkerType.Collector;
@@ -809,6 +995,9 @@ export class GameEngine {
       lastPosition: { ...startPos },
       phaseTimer: 0,
       searchRadius: 0,
+      // Apple collection (collectors only)
+      targetApple: null,
+      carryingApple: false,
     };
 
     this.state.workers.push(worker);
@@ -932,10 +1121,14 @@ export class GameEngine {
       this.pendingChop = false;
     }
 
-    // Handle selling at chipper
+    // Handle selling at chipper and eating apples
     if (this.state.input.interact) {
       this.trySellWood();
+      this.tryEatApple();
     }
+
+    // Update apple buff timer
+    this.updateAppleBuff(deltaTime);
 
     // Update wood drop collection
     this.updateWoodDrops(deltaTime);
@@ -974,11 +1167,19 @@ export class GameEngine {
       this.spawnWoodDrop(nearestTree.x, nearestTree.y, woodAmount);
       this.state.totalWoodChopped += woodAmount;
 
+      // Track tree type in checklist
+      this.discoverTreeType(nearestTree.type);
+
       // Spawn extra particles for tree falling
       this.spawnTreeFallParticles(nearestTree.x, nearestTree.y);
 
       // Show floating text
       this.addFloatingText(nearestTree.x, nearestTree.y - 30, `+${woodAmount}`, '#8B4513');
+
+      // Rare apple drop (1/10000 chance)
+      if (Math.random() < 0.0001) {
+        this.spawnAppleDrop(nearestTree.x, nearestTree.y);
+      }
 
       // Check if chunk is now fully cleared
       this.checkChunkCleared(nearestTree.x, nearestTree.y);
@@ -1037,6 +1238,18 @@ export class GameEngine {
       bobOffset: Math.random() * Math.PI * 2,
     };
     this.state.woodDrops.push(drop);
+  }
+
+  private spawnAppleDrop(x: number, y: number): void {
+    const apple: AppleDrop = {
+      id: `apple_${appleIdCounter++}`,
+      x: x + (Math.random() - 0.5) * 20,
+      y: y + (Math.random() - 0.5) * 10,
+    };
+    this.state.appleDrops.push(apple);
+
+    // Show special floating text for rare apple drop
+    this.addFloatingText(x, y - 40, 'APPLE!', '#E53935');
   }
 
   private updateWoodDrops(deltaTime: number): void {
@@ -1103,6 +1316,80 @@ export class GameEngine {
 
       // Reset interact to prevent repeated selling
       this.state.input.interact = false;
+    }
+  }
+
+  private tryEatApple(): void {
+    const { player, applePile, appleBuff } = this.state;
+
+    // Check if there are apples to eat
+    if (applePile.count <= 0) return;
+
+    // Check if player is near apple pile
+    const dx = player.position.x - applePile.x;
+    const dy = player.position.y - applePile.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    if (dist < 60) {
+      // Eat an apple
+      this.state.applePile.count--;
+
+      // Add 5 seconds to buff timer
+      this.state.appleBuff.remainingTime += 5;
+
+      // Activate buff if not already active
+      if (!this.state.appleBuff.active) {
+        this.state.appleBuff.active = true;
+      }
+
+      // Show eating message
+      this.addFloatingText(
+        player.position.x,
+        player.position.y - 30,
+        'BUFF ACTIVE! 5x Speed, 2x Damage',
+        '#E53935'
+      );
+
+      // Spawn apple-colored particles
+      this.spawnAppleParticles(player.position.x, player.position.y);
+
+      // Reset interact to prevent repeated eating
+      this.state.input.interact = false;
+    }
+  }
+
+  private spawnAppleParticles(x: number, y: number): void {
+    for (let i = 0; i < 8; i++) {
+      const particle: Particle = {
+        x,
+        y,
+        vx: (Math.random() - 0.5) * 80,
+        vy: -Math.random() * 60 - 20,
+        life: 0.8,
+        maxLife: 0.8,
+        color: Math.random() > 0.5 ? '#E53935' : '#4CAF50', // Red or green
+        size: 3 + Math.random() * 2,
+      };
+      this.state.particles.push(particle);
+    }
+  }
+
+  private updateAppleBuff(deltaTime: number): void {
+    const { appleBuff } = this.state;
+
+    if (appleBuff.active && appleBuff.remainingTime > 0) {
+      appleBuff.remainingTime -= deltaTime;
+
+      if (appleBuff.remainingTime <= 0) {
+        appleBuff.active = false;
+        appleBuff.remainingTime = 0;
+        this.addFloatingText(
+          this.state.player.position.x,
+          this.state.player.position.y - 30,
+          'Buff ended!',
+          '#888888'
+        );
+      }
     }
   }
 
@@ -1368,6 +1655,9 @@ export class GameEngine {
       lastPosition: { ...startPos },
       phaseTimer: 0,
       searchRadius: 0,
+      // Apple collection (collectors only)
+      targetApple: null,
+      carryingApple: false,
     };
 
     this.state.workers.push(worker);
@@ -1392,11 +1682,13 @@ export class GameEngine {
         worker.chopTimer -= deltaTime;
       }
 
-      // Calculate effective speed with upgrades (20% per level)
-      const effectiveSpeed = worker.speed * Math.pow(1.2, workerUpgrades.workerSpeed - 1);
+      // Calculate effective speed with upgrades (20% per level) and apple buff
+      const appleSpeedMult = this.state.appleBuff.active ? this.state.appleBuff.speedMultiplier : 1;
+      const effectiveSpeed = worker.speed * Math.pow(1.2, workerUpgrades.workerSpeed - 1) * appleSpeedMult;
 
-      // Calculate effective power level for 20% multipliers
+      // Calculate effective power level for 20% multipliers and apple damage buff
       const effectivePower = workerUpgrades.workerPower;
+      const appleDamageMult = this.state.appleBuff.active ? this.state.appleBuff.damageMultiplier : 1;
 
       const isChopper = worker.type === WorkerType.Chopper;
       const isCollector = worker.type === WorkerType.Collector;
@@ -1454,7 +1746,22 @@ export class GameEngine {
               }
             }
           } else if (isCollector) {
-            // Collectors only look for wood drops to collect
+            // If carrying an apple, go deliver it first
+            if (worker.carryingApple) {
+              worker.state = WorkerState.ReturningWithApple;
+              break;
+            }
+
+            // Check for nearby apples first (priority over wood)
+            const nearbyApple = this.findNearestApple(worker.position.x, worker.position.y, 800);
+            if (nearbyApple) {
+              worker.targetApple = nearbyApple;
+              worker.state = WorkerState.MovingToApple;
+              worker.searchRadius = 0;
+              break;
+            }
+
+            // Collectors look for wood drops to collect
             const collectorCapacity = Math.floor(worker.carryCapacity * Math.pow(1.8, effectivePower - 1));
             if (worker.wood < collectorCapacity) {
               // Search with expanding range based on searchRadius
@@ -1562,7 +1869,7 @@ export class GameEngine {
           if (worker.chopTimer <= 0) {
             // Worker chop cooldown - 5% faster per Work Duration level (compounding)
             worker.chopTimer = 0.6 * Math.pow(0.95, this.state.workerUpgrades.workDuration - 1);
-            const chopDamage = worker.chopPower * Math.pow(1.2, effectivePower - 1);  // 1.2x damage per level
+            const chopDamage = worker.chopPower * Math.pow(1.2, effectivePower - 1) * appleDamageMult;  // 1.2x damage per level, apple buff
             const wasDestroyed = damageTree(worker.targetTree, chopDamage, this.config);
 
             // Drain stamina when chopping
@@ -1577,7 +1884,13 @@ export class GameEngine {
               const woodAmount = baseWood * multiplier;
               this.spawnWoodDrop(worker.targetTree.x, worker.targetTree.y, woodAmount);
               this.state.totalWoodChopped += woodAmount;
+              // Track tree type in checklist
+              this.discoverTreeType(worker.targetTree.type);
               this.spawnTreeFallParticles(worker.targetTree.x, worker.targetTree.y);
+              // Rare apple drop (1/10000 chance)
+              if (Math.random() < 0.0001) {
+                this.spawnAppleDrop(worker.targetTree.x, worker.targetTree.y);
+              }
               // Check if chunk is now fully cleared
               this.checkChunkCleared(worker.targetTree.x, worker.targetTree.y);
               worker.treesChopped++;
@@ -1777,6 +2090,106 @@ export class GameEngine {
             worker.treesChopped = 0;
             worker.state = WorkerState.Idle;
             this.addFloatingText(worker.position.x, worker.position.y - 20, 'Ready!', '#00FF00');
+          }
+          break;
+
+        case WorkerState.MovingToApple:
+          // Only collectors use this state
+          if (!isCollector) {
+            worker.state = WorkerState.Idle;
+            break;
+          }
+
+          // Check if worker needs rest
+          if (worker.stamina <= 0) {
+            worker.state = WorkerState.GoingToRest;
+            worker.targetApple = null;
+            break;
+          }
+
+          // Validate target apple still exists
+          if (!worker.targetApple || !this.state.appleDrops.includes(worker.targetApple)) {
+            worker.state = WorkerState.Idle;
+            worker.targetApple = null;
+            break;
+          }
+
+          // Move toward apple
+          const appleDx = worker.targetApple.x - worker.position.x;
+          const appleDy = worker.targetApple.y - worker.position.y;
+          const appleDist = Math.sqrt(appleDx * appleDx + appleDy * appleDy);
+
+          if (appleDist < 20) {
+            // Close enough to collect
+            worker.state = WorkerState.CollectingApple;
+            worker.velocity.x = 0;
+            worker.velocity.y = 0;
+          } else if (appleDist > 0) {
+            worker.velocity.x = (appleDx / appleDist) * effectiveSpeed;
+            worker.velocity.y = (appleDy / appleDist) * effectiveSpeed;
+            worker.facingRight = appleDx > 0;
+          }
+          break;
+
+        case WorkerState.CollectingApple:
+          // Only collectors use this state
+          if (!isCollector) {
+            worker.state = WorkerState.Idle;
+            break;
+          }
+
+          worker.velocity.x = 0;
+          worker.velocity.y = 0;
+
+          // Check if apple is gone
+          if (!worker.targetApple || !this.state.appleDrops.includes(worker.targetApple)) {
+            worker.state = WorkerState.Idle;
+            worker.targetApple = null;
+            break;
+          }
+
+          // Pick up the apple
+          const appleIndex = this.state.appleDrops.indexOf(worker.targetApple);
+          if (appleIndex !== -1) {
+            this.state.appleDrops.splice(appleIndex, 1);
+          }
+          worker.carryingApple = true;
+          worker.targetApple = null;
+          worker.state = WorkerState.ReturningWithApple;
+          this.addFloatingText(worker.position.x, worker.position.y - 20, 'Got apple!', '#E53935');
+          break;
+
+        case WorkerState.ReturningWithApple:
+          // Only collectors use this state
+          if (!isCollector) {
+            worker.state = WorkerState.Idle;
+            break;
+          }
+
+          // Check if worker needs rest
+          if (worker.stamina <= 0) {
+            worker.state = WorkerState.GoingToRest;
+            break;
+          }
+
+          // Move toward apple pile
+          const { applePile } = this.state;
+          const pileDx = applePile.x - worker.position.x;
+          const pileDy = applePile.y - worker.position.y;
+          const pileDist = Math.sqrt(pileDx * pileDx + pileDy * pileDy);
+
+          if (pileDist < 30) {
+            // Arrived at pile, deposit apple
+            worker.velocity.x = 0;
+            worker.velocity.y = 0;
+            worker.carryingApple = false;
+            this.state.applePile.count++;
+            this.addFloatingText(applePile.x, applePile.y - 20, '+1 Apple!', '#E53935');
+            worker.state = WorkerState.Idle;
+          } else if (pileDist > 0) {
+            worker.velocity.x = (pileDx / pileDist) * effectiveSpeed;
+            worker.velocity.y = (pileDy / pileDist) * effectiveSpeed;
+            worker.facingRight = pileDx > 0;
           }
           break;
       }
@@ -2043,6 +2456,35 @@ export class GameEngine {
       if (scoreSq < nearestScoreSq) {
         nearestScoreSq = scoreSq;
         nearest = drop;
+      }
+    }
+
+    return nearest;
+  }
+
+  private findNearestApple(x: number, y: number, maxRange: number): AppleDrop | null {
+    let nearest: AppleDrop | null = null;
+    let nearestDistSq = maxRange * maxRange;
+
+    // Pre-compute apple targeting counts
+    const appleTargetCounts = new Map<AppleDrop, number>();
+    for (const w of this.state.workers) {
+      if (w.targetApple) {
+        appleTargetCounts.set(w.targetApple, (appleTargetCounts.get(w.targetApple) || 0) + 1);
+      }
+    }
+
+    for (const apple of this.state.appleDrops) {
+      // Only allow 1 collector per apple
+      if ((appleTargetCounts.get(apple) || 0) >= 1) continue;
+
+      const dx = apple.x - x;
+      const dy = apple.y - y;
+      const distSq = dx * dx + dy * dy;
+
+      if (distSq < nearestDistSq) {
+        nearestDistSq = distSq;
+        nearest = apple;
       }
     }
 
@@ -2317,6 +2759,6 @@ export class GameEngine {
   }
 
   private render(): void {
-    render(this.ctx, this.state, this.sprites, this.config, this.catchUpTimeRemaining, this.waypointPlacementMode, this.regenCooldown);
+    render(this.ctx, this.state, this.sprites, this.config, this.catchUpTimeRemaining, this.waypointPlacementMode, this.regenCooldown, this.cheatMenuOpen, this.treeChecklistOpen);
   }
 }
