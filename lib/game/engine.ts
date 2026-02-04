@@ -109,6 +109,7 @@ export class GameEngine {
   private regenCooldown: number = 0; // Cooldown timer for regenerate chunks button
   private saveBuffer: string = ''; // Buffer for detecting "save" typed
   public onSaveRequested: (() => void) | null = null; // Callback when save modal requested
+  private stopped: boolean = false; // Prevent double-stop from saving twice
 
   // Generate a unique world seed using crypto API for better randomness
   private generateWorldSeed(): number {
@@ -399,6 +400,10 @@ export class GameEngine {
   }
 
   stop(skipSave: boolean = false): void {
+    // Prevent double-stop from saving twice (e.g., import then React cleanup)
+    if (this.stopped) return;
+    this.stopped = true;
+
     if (this.animationId) {
       cancelAnimationFrame(this.animationId);
       this.animationId = 0;
