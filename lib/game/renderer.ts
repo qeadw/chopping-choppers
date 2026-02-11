@@ -14,7 +14,8 @@ export function render(
   waypointMode: WaypointType | null = null,
   regenCooldown: number = 0,
   cheatMenuOpen: boolean = false,
-  treeChecklistOpen: boolean = false
+  treeChecklistOpen: boolean = false,
+  squadMenuOpen: boolean = false
 ): void {
   const { camera, player, chunks } = state;
   const baseScale = config.pixelScale;
@@ -148,13 +149,18 @@ export function render(
     drawTreeChecklist(ctx, state, sprites);
   }
 
-  // Draw player waypoint off-screen indicator when zoomed in
-  if (camera.zoom >= 0.5 && state.playerWaypoint) {
+  // Draw squad menu if open (ignores UI hidden state)
+  if (squadMenuOpen) {
+    drawSquadMenu(ctx, state);
+  }
+
+  // Draw player waypoint off-screen indicator at all zoom levels
+  if (state.playerWaypoint) {
     drawPlayerWaypointIndicator(ctx, state, effectiveCamera, scale);
   }
 
-  // Draw catch-up indicator if active
-  if (catchUpTime > 0) {
+  // Draw catch-up indicator if active (not when UI is hidden with F2)
+  if (catchUpTime > 0 && !state.uiHidden) {
     drawCatchUpIndicator(ctx, catchUpTime);
   }
 }
@@ -203,13 +209,15 @@ function drawTree(
     sprite.height * scale
   );
 
-  // Draw health bar if tree is damaged (health < maxHealth, 2x, or 4x for challenge)
-  // Determine effective max based on current health (could be 1x, 2x, or 4x)
+  // Draw health bar if tree is damaged (health < maxHealth, 2x, 4x, or 8x for challenge)
+  // Determine effective max based on current health (could be 1x, 2x, 4x, or 8x)
   let effectiveMaxHealth = tree.maxHealth;
-  if (tree.health > tree.maxHealth * 2) {
-    effectiveMaxHealth = tree.maxHealth * 4;  // Platinum challenge
+  if (tree.health > tree.maxHealth * 4) {
+    effectiveMaxHealth = tree.maxHealth * 8;  // Gold/Platinum challenge (8x)
+  } else if (tree.health > tree.maxHealth * 2) {
+    effectiveMaxHealth = tree.maxHealth * 4;  // Silver challenge (4x)
   } else if (tree.health > tree.maxHealth) {
-    effectiveMaxHealth = tree.maxHealth * 2;  // Gold challenge
+    effectiveMaxHealth = tree.maxHealth * 2;  // Bronze challenge (2x)
   }
   if (!tree.isDead && tree.health < effectiveMaxHealth) {
     const barWidth = 20 * scale;
@@ -223,13 +231,16 @@ function drawTree(
 
     // Health - use effective max for percentage
     const healthPercent = tree.health / effectiveMaxHealth;
-    // Platinum (4x) = white/silver, Gold (2x) = orange, normal = green
-    const isPlatinumChallenge = effectiveMaxHealth > tree.maxHealth * 2;
-    const isGoldChallenge = effectiveMaxHealth > tree.maxHealth && !isPlatinumChallenge;
-    if (isPlatinumChallenge) {
-      ctx.fillStyle = healthPercent > 0.5 ? '#E5E4E2' : healthPercent > 0.25 ? '#C0C0C0' : '#f44';
-    } else if (isGoldChallenge) {
-      ctx.fillStyle = healthPercent > 0.5 ? '#f80' : healthPercent > 0.25 ? '#fa0' : '#f44';
+    // Gold/Plat (8x) = white/platinum, Silver (4x) = silver, Bronze (2x) = bronze/orange, normal = green
+    const isGoldPlatChallenge = effectiveMaxHealth > tree.maxHealth * 4;
+    const isSilverChallenge = effectiveMaxHealth > tree.maxHealth * 2 && !isGoldPlatChallenge;
+    const isBronzeChallenge = effectiveMaxHealth > tree.maxHealth && !isSilverChallenge && !isGoldPlatChallenge;
+    if (isGoldPlatChallenge) {
+      ctx.fillStyle = healthPercent > 0.5 ? '#E5E4E2' : healthPercent > 0.25 ? '#FFD700' : '#f44';
+    } else if (isSilverChallenge) {
+      ctx.fillStyle = healthPercent > 0.5 ? '#C0C0C0' : healthPercent > 0.25 ? '#A0A0A0' : '#f44';
+    } else if (isBronzeChallenge) {
+      ctx.fillStyle = healthPercent > 0.5 ? '#CD7F32' : healthPercent > 0.25 ? '#fa0' : '#f44';
     } else {
       ctx.fillStyle = healthPercent > 0.5 ? '#4a4' : healthPercent > 0.25 ? '#aa4' : '#a44';
     }
@@ -771,7 +782,7 @@ function drawUI(
   ctx.fillStyle = '#ccc';
   ctx.font = '11px monospace';
   ctx.textAlign = 'left';
-  ctx.fillText('WASD: Move | Click: Chop | E: Sell | J/K: Hire | C/V: Toggle workers | T: Timers | L: Checklist | F2: Hide UI', padding + 10, controlsY + 14);
+  ctx.fillText('WASD: Move | Click: Chop | E: Sell | J/K: Hire | C/V: Toggle workers | T: Timers | L: Checklist | H: Squad | F2: Hide UI', padding + 10, controlsY + 14);
   ctx.fillText('Scroll: Zoom | Zoomed out: Waypoints (Q/R/Y/F/X)', padding + 10, controlsY + 30);
 
   // Apple buff timer display
@@ -1062,11 +1073,16 @@ function drawChunkOverlay(
       const key = chunkKey(cx, cy);
       const chunk = chunks.get(key);
 
-      // Check chunk status
+      // Check chunk tier (0=none, 1=bronze, 2=silver, 3=gold, 4=platinum)
       const isPlatinum = state.platinumChunks.has(key);
-      const isGold = state.clearedChunks.has(key);
+      const isGold = state.goldChunks.has(key);
+      const isSilver = state.silverChunks.has(key);
+      const isBronze = state.bronzeChunks.has(key);
+      const tier = isPlatinum ? 4 : isGold ? 3 : isSilver ? 2 : isBronze ? 1 : 0;
       const isChallenge = state.challengeChunks.has(key);
       const cooldown = state.chunkToggleCooldowns.get(key) || 0;
+      // Challenge multipliers: bronze=2x, silver=4x, gold=8x, platinum=8x
+      const challengeMulti = tier === 1 ? 2 : tier === 2 ? 4 : tier >= 3 ? 8 : 2;
 
       let color: string;
       let treeCount = 0;
@@ -1093,41 +1109,31 @@ function drawChunkOverlay(
       ctx.fillStyle = color;
       ctx.fillRect(screenX, screenY, screenW, screenH);
 
-      // Draw chunk border - platinum > gold > white
-      if (isPlatinum) {
-        ctx.strokeStyle = '#E5E4E2';  // Platinum color
-        ctx.lineWidth = 4;
-      } else if (isGold) {
-        ctx.strokeStyle = '#FFD700';  // Gold color
-        ctx.lineWidth = 3;
-      } else {
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-        ctx.lineWidth = 1;
-      }
+      // Tier colors: bronze=#CD7F32, silver=#C0C0C0, gold=#FFD700, platinum=#E5E4E2
+      const tierColors = ['rgba(255,255,255,0.5)', '#CD7F32', '#C0C0C0', '#FFD700', '#E5E4E2'];
+      const tierLineWidths = [1, 2, 3, 3, 4];
+
+      // Draw chunk border based on tier
+      ctx.strokeStyle = tierColors[tier];
+      ctx.lineWidth = tierLineWidths[tier];
       ctx.strokeRect(screenX, screenY, screenW, screenH);
 
       // Draw tree count - always show for all chunks
       if (chunk) {
-        // Color based on status
-        if (isPlatinum) {
-          ctx.fillStyle = '#E5E4E2';
-        } else if (isGold) {
-          ctx.fillStyle = '#FFD700';
-        } else {
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-        }
+        // Color based on tier
+        ctx.fillStyle = tier > 0 ? tierColors[tier] : 'rgba(255, 255, 255, 0.9)';
         ctx.fillText(
           `${treeCount}`,
           screenX + screenW / 2,
           screenY + screenH / 2 + 4
         );
 
-        // Show challenge indicator if active (4X for platinum, 2X for gold)
+        // Show challenge indicator if active
         if (isChallenge) {
-          ctx.fillStyle = isPlatinum ? '#E5E4E2' : '#FF6600';
+          ctx.fillStyle = tier >= 2 ? tierColors[tier] : '#FF6600';
           ctx.font = `bold ${Math.max(8, 10 * scale / 3)}px monospace`;
           ctx.fillText(
-            isPlatinum ? '4X' : '2X',
+            `${challengeMulti}X`,
             screenX + screenW / 2,
             screenY + screenH / 2 - 12
           );
@@ -1135,7 +1141,7 @@ function drawChunkOverlay(
         }
 
         // Show cooldown timer if applicable and zoomed out enough
-        if (cooldown > 0 && fullyZoomedOut && (isGold || isPlatinum)) {
+        if (cooldown > 0 && fullyZoomedOut && tier > 0) {
           ctx.fillStyle = '#FF4444';
           ctx.font = `${Math.max(8, 8 * scale / 3)}px monospace`;
           const mins = Math.floor(cooldown / 60);
@@ -1148,8 +1154,8 @@ function drawChunkOverlay(
           ctx.font = `${Math.max(10, 12 * scale / 3)}px monospace`;
         }
 
-        // Show click hint for gold/platinum chunks when fully zoomed out
-        if (fullyZoomedOut && (isGold || isPlatinum) && cooldown <= 0 && !isChallenge) {
+        // Show click hint for tiered chunks when fully zoomed out
+        if (fullyZoomedOut && tier > 0 && cooldown <= 0 && !isChallenge) {
           ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
           ctx.font = `${Math.max(7, 7 * scale / 3)}px monospace`;
           ctx.fillText(
@@ -1189,7 +1195,7 @@ function drawChunkOverlay(
       ctx.fillText(`Placing ${modeName} waypoint - Click to place`, ctx.canvas.width / 2, ctx.canvas.height - 60);
     } else {
       ctx.fillStyle = '#FFD700';
-      ctx.fillText('Click completed chunks for CHALLENGE (Gold: 2x | Platinum: 4x)', ctx.canvas.width / 2, ctx.canvas.height - 60);
+      ctx.fillText('Click completed chunks for CHALLENGE (Bronze: 2x | Silver: 4x | Gold/Plat: 8x)', ctx.canvas.width / 2, ctx.canvas.height - 60);
     }
 
     ctx.fillStyle = '#AAAAAA';
@@ -1246,8 +1252,8 @@ function drawCheatMenu(
   ctx: CanvasRenderingContext2D,
   state: GameState
 ): void {
-  const menuWidth = 280;
-  const menuHeight = 200;
+  const menuWidth = 300;
+  const menuHeight = 480;
   const menuX = (ctx.canvas.width - menuWidth) / 2;
   const menuY = (ctx.canvas.height - menuHeight) / 2;
 
@@ -1277,23 +1283,131 @@ function drawCheatMenu(
 
   // Cheat options
   ctx.textAlign = 'left';
-  ctx.font = '14px monospace';
+  ctx.font = '12px monospace';
   const options = [
-    { key: 'M', label: 'Add $1000', id: 'money1k' },
-    { key: 'N', label: 'Add $10000', id: 'money10k' },
-    { key: 'B', label: 'Add $100000', id: 'money100k' },
-    { key: 'L', label: 'Open Tree Checklist', id: 'checklist' },
-    { key: 'G', label: 'Fill Tree Checklist', id: 'fillchecklist' },
+    { key: 'M', label: 'Add $1,000' },
+    { key: 'N', label: 'Add $10,000' },
+    { key: 'B', label: 'Add $100,000' },
+    { key: 'L', label: 'Open Tree Checklist' },
+    { key: 'G', label: 'Fill Tree Checklist' },
+    { key: 'S', label: 'Set World Seed' },
+    { key: 'R', label: 'Randomize Seed' },
+    { key: 'A', label: 'Add 10 Apples' },
+    { key: 'T', label: '+1 Hour Offline Time' },
+    { key: 'P', label: 'Set Buff Time' },
+    { key: 'D', label: 'Set Speed Multiplier' },
+    { key: 'F', label: 'Set Damage Multiplier' },
+    { key: 'U', label: 'Max All Upgrades' },
+    { key: 'W', label: '+5 Free Choppers' },
+    { key: 'E', label: '+5 Free Collectors' },
   ];
 
-  let y = menuY + 70;
+  let y = menuY + 60;
   for (const opt of options) {
     ctx.fillStyle = '#FF88FF';
-    ctx.fillText(`[${opt.key}]`, menuX + 20, y);
+    ctx.fillText(`[${opt.key}]`, menuX + 15, y);
     ctx.fillStyle = '#fff';
-    ctx.fillText(opt.label, menuX + 60, y);
-    y += 26;
+    ctx.fillText(opt.label, menuX + 50, y);
+    y += 21;
   }
+
+  // Show current stats
+  ctx.fillStyle = '#888';
+  ctx.font = '10px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(`Seed: ${state.worldSeed} | Buff: ${Math.ceil(state.appleBuff.remainingTime)}s`, menuX + menuWidth / 2, menuY + menuHeight - 28);
+  ctx.fillText(`Speed: ${state.appleBuff.speedMultiplier}x | Damage: ${state.appleBuff.damageMultiplier}x`, menuX + menuWidth / 2, menuY + menuHeight - 12);
+}
+
+function drawSquadMenu(
+  ctx: CanvasRenderingContext2D,
+  state: GameState
+): void {
+  const menuWidth = 320;
+  const menuHeight = 340;
+  const menuX = (ctx.canvas.width - menuWidth) / 2;
+  const menuY = (ctx.canvas.height - menuHeight) / 2;
+
+  // Count workers
+  const chopperCount = state.workers.filter(w => w.type === WorkerType.Chopper).length;
+  const collectorCount = state.workers.filter(w => w.type === WorkerType.Collector).length;
+  const escortingChoppers = state.workers.filter(w => w.type === WorkerType.Chopper && w.isEscorting).length;
+  const escortingCollectors = state.workers.filter(w => w.type === WorkerType.Collector && w.isEscorting).length;
+  const availableChoppers = state.workers.filter(w => w.type === WorkerType.Chopper && !w.isEscorting && w.state !== WorkerState.Resting).length;
+  const availableCollectors = state.workers.filter(w => w.type === WorkerType.Collector && !w.isEscorting && w.state !== WorkerState.Resting).length;
+
+  // Darken background
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+  // Menu background
+  ctx.fillStyle = 'rgba(30, 50, 60, 0.95)';
+  ctx.fillRect(menuX, menuY, menuWidth, menuHeight);
+
+  // Menu border
+  ctx.strokeStyle = '#44AAFF';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(menuX, menuY, menuWidth, menuHeight);
+
+  // Title
+  ctx.fillStyle = '#44AAFF';
+  ctx.font = 'bold 18px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('SQUAD MENU', menuX + menuWidth / 2, menuY + 28);
+
+  // Subtitle
+  ctx.fillStyle = '#888';
+  ctx.font = '10px monospace';
+  ctx.fillText('Press H to close', menuX + menuWidth / 2, menuY + 42);
+
+  // Current squad status
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 14px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('Current Squad:', menuX + 20, menuY + 70);
+
+  ctx.font = '13px monospace';
+  ctx.fillStyle = '#4f8';
+  ctx.fillText(`Choppers:   ${escortingChoppers}/${chopperCount} following`, menuX + 30, menuY + 92);
+  ctx.fillStyle = '#f84';
+  ctx.fillText(`Collectors: ${escortingCollectors}/${collectorCount} following`, menuX + 30, menuY + 112);
+
+  // Available workers
+  ctx.fillStyle = '#aaa';
+  ctx.font = '11px monospace';
+  ctx.fillText(`(${availableChoppers} available choppers, ${availableCollectors} available collectors)`, menuX + 20, menuY + 135);
+
+  // Controls
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 14px monospace';
+  ctx.fillText('Controls:', menuX + 20, menuY + 165);
+
+  ctx.font = '13px monospace';
+  const controls = [
+    { key: '1', label: 'Add Chopper to squad' },
+    { key: '2', label: 'Add Collector to squad' },
+    { key: 'Shift+1', label: 'Add ALL Choppers' },
+    { key: 'Shift+2', label: 'Add ALL Collectors' },
+    { key: '3', label: 'Release Chopper from squad' },
+    { key: '4', label: 'Release Collector from squad' },
+    { key: '5', label: 'Release ALL workers' },
+  ];
+
+  let y = menuY + 188;
+  for (const ctrl of controls) {
+    ctx.fillStyle = '#88CCFF';
+    ctx.fillText(`[${ctrl.key}]`, menuX + 25, y);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(ctrl.label, menuX + 100, y);
+    y += 20;
+  }
+
+  // Info
+  ctx.fillStyle = '#888';
+  ctx.font = '11px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Squad workers follow you and teleport with you', menuX + menuWidth / 2, menuY + menuHeight - 28);
+  ctx.fillText('They will not work until released', menuX + menuWidth / 2, menuY + menuHeight - 12);
 }
 
 function drawTreeChecklist(
@@ -1368,11 +1482,13 @@ function drawTreeChecklist(
     const stats = TREE_STATS[treeType];
     const color = rarityColors[i] || '#888';
 
-    // Progressive unlock thresholds
-    const showSize = count >= 10;
-    const showWood = count >= 50;
-    const showSpawnChance = count >= 100;
-    const showHP = count >= 250;
+    // Progressive unlock thresholds - 5x lower for Ancient Oak (8) and below
+    const isCommonTree = i <= 8; // Ancient Oak is index 8
+    const thresholdMultiplier = isCommonTree ? 0.2 : 1; // 5x lower for common trees
+    const showSize = count >= Math.ceil(10 * thresholdMultiplier);      // 2 for common, 10 for rare
+    const showWood = count >= Math.ceil(50 * thresholdMultiplier);      // 10 for common, 50 for rare
+    const showSpawnChance = count >= Math.ceil(100 * thresholdMultiplier); // 20 for common, 100 for rare
+    const showHP = count >= Math.ceil(250 * thresholdMultiplier);       // 50 for common, 250 for rare
 
     // Draw tree sprite if discovered (scaled down)
     if (discovered) {

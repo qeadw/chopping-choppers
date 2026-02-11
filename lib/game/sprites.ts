@@ -910,53 +910,102 @@ function createDivineTreeSprite(): HTMLCanvasElement {
 }
 
 function createWorldTreeSprite(): HTMLCanvasElement {
-  const canvas = createCanvas(36, 52);
+  // Massive Yggdrasil-style world tree (70x100 pixels)
+  const canvas = createCanvas(70, 100);
   const ctx = canvas.getContext('2d')!;
   const { darkest, dark, base, light, highlight, rainbow1, rainbow2, rainbow3, golden } = COLORS.world;
   const trunk = COLORS.trunk;
 
-  // Massive ancient trunk
-  for (let y = 32; y < 52; y++) {
-    const width = y > 45 ? 14 : 10;
-    const startX = 18 - width / 2;
+  // Massive ancient trunk with roots spreading at base
+  for (let y = 55; y < 100; y++) {
+    // Trunk widens near the base with visible roots
+    let width: number;
+    if (y > 90) {
+      width = 24 + (y - 90) * 2; // Roots spreading
+    } else if (y > 80) {
+      width = 20 + (y - 80) * 0.4;
+    } else {
+      width = 16 + (y - 55) * 0.16;
+    }
+    const startX = 35 - width / 2;
     for (let x = startX; x < startX + width; x++) {
       const relX = (x - startX) / width;
-      if (relX < 0.25) setPixel(ctx, x, y, trunk.dark);
-      else if (relX > 0.75) setPixel(ctx, x, y, trunk.highlight);
+      // Add bark texture with vertical lines
+      const barkNoise = Math.sin(y * 0.5 + x * 0.3) * 0.1;
+      if (relX < 0.2 + barkNoise) setPixel(ctx, x, y, trunk.dark);
+      else if (relX > 0.8 - barkNoise) setPixel(ctx, x, y, trunk.highlight);
+      else if (Math.sin(x * 2) > 0.7) setPixel(ctx, x, y, trunk.light);
       else setPixel(ctx, x, y, trunk.base);
     }
   }
 
-  // Enormous legendary canopy
-  for (let y = 0; y < 36; y++) {
-    for (let x = 0; x < 36; x++) {
-      const dx = x - 18;
-      const dy = y - 16;
-      const dist = Math.sqrt(dx * dx * 0.6 + dy * dy * 0.8);
-      const noise = Math.sin(x * 1.5) * 0.1 + Math.cos(y * 1.3) * 0.1;
-      if (dist + noise < 16) {
+  // Draw root tendrils extending outward
+  const roots = [[15, 95], [20, 92], [50, 92], [55, 95], [10, 98], [60, 98]];
+  roots.forEach(([x, y]) => {
+    setPixel(ctx, x, y, trunk.dark);
+    setPixel(ctx, x + 1, y, trunk.base);
+    setPixel(ctx, x - 1, y + 1, trunk.dark);
+  });
+
+  // Enormous legendary canopy - multi-layered for depth
+  const centerX = 35;
+  const centerY = 28;
+
+  // Main canopy
+  for (let y = 0; y < 60; y++) {
+    for (let x = 0; x < 70; x++) {
+      const dx = x - centerX;
+      const dy = y - centerY;
+      const dist = Math.sqrt(dx * dx * 0.5 + dy * dy * 0.7);
+      const noise = Math.sin(x * 1.2) * 2 + Math.cos(y * 1.1) * 2 + Math.sin((x + y) * 0.5) * 1.5;
+
+      if (dist + noise < 32) {
         let color: string;
-        if (dist < 5) color = highlight;
-        else if (dx < -6) color = darkest;
-        else if (dx > 6) color = highlight;
-        else if (dy < -4) color = light;
+        // Create depth with lighting
+        if (dist < 8) color = highlight;
+        else if (dx < -12) color = darkest;
+        else if (dx > 12) color = highlight;
+        else if (dy < -8) color = light;
+        else if (Math.sin(x * 0.8 + y * 0.6) > 0.5) color = light;
+        else if (Math.sin(x * 1.2 + y * 0.4) > 0.6) color = dark;
         else color = base;
         setPixel(ctx, x, y, color);
       }
     }
   }
 
-  // Rainbow energy throughout (Yggdrasil-style)
+  // Rainbow energy throughout (Yggdrasil-style) - more extensive
   const rainbowSpots = [
-    [8, 8, rainbow1], [10, 5, rainbow2], [12, 10, rainbow3],
-    [24, 7, rainbow1], [26, 12, rainbow2], [22, 4, rainbow3],
-    [16, 3, rainbow1], [20, 6, rainbow2], [14, 8, rainbow3],
+    // Inner glow
+    [30, 20, rainbow1], [35, 15, rainbow2], [40, 20, rainbow3],
+    [32, 28, rainbow2], [38, 28, rainbow1], [35, 25, rainbow3],
+    // Middle ring
+    [20, 18, rainbow1], [25, 12, rainbow2], [45, 12, rainbow3],
+    [50, 18, rainbow1], [18, 30, rainbow2], [52, 30, rainbow3],
+    // Outer ring
+    [12, 25, rainbow3], [58, 25, rainbow1], [15, 40, rainbow2],
+    [55, 40, rainbow3], [25, 45, rainbow1], [45, 45, rainbow2],
+    // Extra sparkles
+    [35, 8, rainbow1], [28, 35, rainbow2], [42, 35, rainbow3],
+    [22, 22, rainbow1], [48, 22, rainbow2],
   ];
   rainbowSpots.forEach(([x, y, c]) => setPixel(ctx, x as number, y as number, c as string));
 
-  // Golden leaves scattered
-  const goldenLeaves = [[6, 14], [30, 13], [18, 2], [10, 20], [26, 19]];
+  // Golden leaves scattered throughout
+  const goldenLeaves = [
+    [10, 28], [60, 28], [35, 5], [20, 38], [50, 38],
+    [15, 15], [55, 15], [25, 50], [45, 50], [35, 45],
+    [8, 35], [62, 35], [30, 10], [40, 10],
+  ];
   goldenLeaves.forEach(([x, y]) => setPixel(ctx, x, y, golden));
+
+  // Add mystical glow effect at the core
+  const coreGlow = [
+    [33, 26], [34, 26], [35, 26], [36, 26], [37, 26],
+    [34, 27], [35, 27], [36, 27],
+    [35, 28],
+  ];
+  coreGlow.forEach(([x, y]) => setPixel(ctx, x, y, '#FFFFCC'));
 
   return canvas;
 }
@@ -1066,39 +1115,62 @@ function createDivineStumpSprite(): HTMLCanvasElement {
 }
 
 function createWorldStumpSprite(): HTMLCanvasElement {
-  const canvas = createCanvas(36, 16);
+  // Massive stump matching the larger world tree (70x30)
+  const canvas = createCanvas(70, 30);
   const ctx = canvas.getContext('2d')!;
   const trunk = COLORS.trunk;
   const { rainbow1, rainbow2, rainbow3, golden } = COLORS.world;
   const wood = COLORS.wood;
 
-  // Massive legendary stump
-  for (let y = 4; y < 16; y++) {
-    const width = y > 12 ? 16 : 12;
-    const startX = 18 - width / 2;
+  // Massive legendary stump with spreading roots
+  for (let y = 8; y < 30; y++) {
+    let width: number;
+    if (y > 24) {
+      width = 28 + (y - 24) * 2; // Roots spreading
+    } else {
+      width = 24 + (y - 8) * 0.2;
+    }
+    const startX = 35 - width / 2;
     for (let x = startX; x < startX + width; x++) {
       const relX = (x - startX) / width;
-      if (relX < 0.25) setPixel(ctx, x, y, trunk.dark);
-      else if (relX > 0.75) setPixel(ctx, x, y, trunk.highlight);
+      const barkNoise = Math.sin(y * 0.5 + x * 0.3) * 0.1;
+      if (relX < 0.2 + barkNoise) setPixel(ctx, x, y, trunk.dark);
+      else if (relX > 0.8 - barkNoise) setPixel(ctx, x, y, trunk.highlight);
+      else if (Math.sin(x * 2) > 0.7) setPixel(ctx, x, y, trunk.light);
       else setPixel(ctx, x, y, trunk.base);
     }
   }
 
   // Top surface with many rings
-  for (let x = 12; x <= 24; x++) {
-    setPixel(ctx, x, 2, wood.dark);
-    setPixel(ctx, x, 3, wood.base);
-    setPixel(ctx, x, 4, wood.light);
+  for (let x = 23; x <= 47; x++) {
+    setPixel(ctx, x, 5, wood.dark);
+    setPixel(ctx, x, 6, wood.base);
+    setPixel(ctx, x, 7, wood.light);
+  }
+
+  // Ring patterns on top
+  for (let r = 2; r <= 10; r += 2) {
+    const cx = 35, cy = 6;
+    for (let angle = 0; angle < Math.PI * 2; angle += 0.1) {
+      const x = Math.round(cx + Math.cos(angle) * r);
+      const y = Math.round(cy + Math.sin(angle) * r * 0.3);
+      if (x >= 23 && x <= 47 && y >= 5 && y <= 7) {
+        setPixel(ctx, x, y, wood.dark);
+      }
+    }
   }
 
   // Rainbow energy still visible
-  setPixel(ctx, 14, 3, rainbow1);
-  setPixel(ctx, 18, 3, rainbow2);
-  setPixel(ctx, 22, 3, rainbow3);
+  setPixel(ctx, 28, 6, rainbow1);
+  setPixel(ctx, 35, 6, rainbow2);
+  setPixel(ctx, 42, 6, rainbow3);
+  setPixel(ctx, 31, 7, rainbow1);
+  setPixel(ctx, 39, 7, rainbow2);
 
   // Golden remnants
-  setPixel(ctx, 16, 4, golden);
-  setPixel(ctx, 20, 4, golden);
+  setPixel(ctx, 30, 7, golden);
+  setPixel(ctx, 35, 5, golden);
+  setPixel(ctx, 40, 7, golden);
 
   return canvas;
 }

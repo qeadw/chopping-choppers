@@ -20,8 +20,9 @@ import {
   Waypoint,
   WaypointType,
   AppleDrop,
+  TREE_CHOP_MILESTONES,
 } from '../types';
-import { createPlayer, updatePlayer, createCamera, updateCamera, canChop, startChop } from './player';
+import { createPlayer, updatePlayer, createCamera, updateCamera, canChop, startChop, MilestoneBonuses } from './player';
 import { createInputState, setupInputHandlers } from './input';
 import { updateChunks, updateTrees, damageTree, generateChunk } from './forest';
 import { render } from './renderer';
@@ -99,8 +100,13 @@ interface SaveData {
   workers?: WorkerSaveData[];
   worldSeed?: number;
   woodDrops?: WoodDropSaveData[];
-  clearedChunks?: string[];  // Chunks that were fully cleared at once
-  platinumChunks?: string[]; // Chunks cleared in challenge mode
+  // Legacy fields for backward compatibility
+  clearedChunks?: string[];  // Legacy: Chunks that were fully cleared at once (now bronzeChunks)
+  // New tier system
+  bronzeChunks?: string[];   // Tier 1: First clear
+  silverChunks?: string[];   // Tier 2: Clear bronze challenge 2x
+  goldChunks?: string[];     // Tier 3: Clear silver challenge 4x
+  platinumChunks?: string[]; // Tier 4: Clear gold challenge 8x
   challengeChunks?: string[]; // Chunks with challenge mode enabled
   chunkToggleCooldowns?: { key: string; time: number }[]; // Cooldown timers
   choppersEnabled?: boolean;
@@ -146,6 +152,8 @@ export class GameEngine {
   private stopped: boolean = false; // Prevent double-stop from saving twice
   private cheatMenuOpen: boolean = false; // Whether cheat menu is visible
   private treeChecklistOpen: boolean = false; // Whether tree checklist is visible
+  private squadMenuOpen: boolean = false; // Whether squad menu is visible
+  private platinumChunkRegenTimers: Map<string, number> = new Map(); // Timers for platinum chunk tree regeneration
 
   // Generate a unique world seed using crypto API for better randomness
   private generateWorldSeed(): number {
@@ -210,7 +218,9 @@ export class GameEngine {
       workers: [],
       showStumpTimers: true,
       worldSeed: this.generateWorldSeed(),
-      clearedChunks: new Set<string>(),
+      bronzeChunks: new Set<string>(),
+      silverChunks: new Set<string>(),
+      goldChunks: new Set<string>(),
       platinumChunks: new Set<string>(),
       challengeChunks: new Set<string>(),
       chunkToggleCooldowns: new Map<string, number>(),
@@ -330,6 +340,9 @@ export class GameEngine {
       } else if (key === 'l') {
         // Toggle tree checklist
         this.toggleTreeChecklist();
+      } else if (key === 'h') {
+        // Toggle squad menu
+        this.toggleSquadMenu();
       } else if (e.key === 'F2') {
         // Toggle UI visibility
         e.preventDefault();
@@ -345,6 +358,93 @@ export class GameEngine {
         } else if (key === 'g') {
           this.fillTreeChecklist();
           this.addFloatingText(this.state.player.position.x, this.state.player.position.y - 30, 'Tree checklist filled!', '#FF00FF');
+        } else if (key === 's') {
+          // Set seed - prompt for new seed
+          const newSeed = prompt('Enter new world seed (number):', String(this.state.worldSeed));
+          if (newSeed !== null && !isNaN(Number(newSeed))) {
+            this.changeSeed(Number(newSeed));
+          }
+        } else if (key === 'r') {
+          // Randomize seed
+          this.changeSeed(this.generateWorldSeed());
+          this.addFloatingText(this.state.player.position.x, this.state.player.position.y - 30, `New random seed: ${this.state.worldSeed}`, '#FF00FF');
+        } else if (key === 'a') {
+          // Add apples
+          this.state.applePile.count += 10;
+          this.addFloatingText(this.state.player.position.x, this.state.player.position.y - 30, '+10 Apples (cheat)', '#FF00FF');
+        } else if (key === 't') {
+          // Add offline time (simulates 1 hour of progress)
+          this.addFloatingText(this.state.player.position.x, this.state.player.position.y - 30, '+1 hour offline time (cheat)', '#FF00FF');
+          this.simulateOfflineProgress(3600);
+        } else if (key === 'p') {
+          // Set apple buff time
+          const newTime = prompt('Set apple buff time (seconds):', String(Math.ceil(this.state.appleBuff.remainingTime)));
+          if (newTime !== null && !isNaN(Number(newTime))) {
+            this.state.appleBuff.remainingTime = Number(newTime);
+            this.state.appleBuff.active = Number(newTime) > 0;
+            this.addFloatingText(this.state.player.position.x, this.state.player.position.y - 30, `Buff time: ${newTime}s`, '#FF00FF');
+          }
+        } else if (key === 'd') {
+          // Set speed multiplier
+          const newSpeed = prompt('Set apple speed multiplier:', String(this.state.appleBuff.speedMultiplier));
+          if (newSpeed !== null && !isNaN(Number(newSpeed))) {
+            this.state.appleBuff.speedMultiplier = Number(newSpeed);
+            this.addFloatingText(this.state.player.position.x, this.state.player.position.y - 30, `Speed: ${newSpeed}x`, '#FF00FF');
+          }
+        } else if (key === 'f') {
+          // Set damage multiplier
+          const newDamage = prompt('Set apple damage multiplier:', String(this.state.appleBuff.damageMultiplier));
+          if (newDamage !== null && !isNaN(Number(newDamage))) {
+            this.state.appleBuff.damageMultiplier = Number(newDamage);
+            this.addFloatingText(this.state.player.position.x, this.state.player.position.y - 30, `Damage: ${newDamage}x`, '#FF00FF');
+          }
+        } else if (key === 'u') {
+          // Max all upgrades (free)
+          this.state.upgrades.axePower = 5;
+          this.state.upgrades.moveSpeed = 4;
+          this.state.upgrades.chopSpeed = 4;
+          this.state.upgrades.carryCapacity = 5;
+          this.state.workerUpgrades.restSpeed = 4;
+          this.state.workerUpgrades.workDuration = 4;
+          this.state.workerUpgrades.workerSpeed = 4;
+          this.state.workerUpgrades.workerPower = 4;
+          this.addFloatingText(this.state.player.position.x, this.state.player.position.y - 30, 'All upgrades maxed!', '#FF00FF');
+        } else if (key === 'w') {
+          // Add 5 free choppers
+          for (let i = 0; i < 5; i++) {
+            this.spawnWorkerSilent(WorkerType.Chopper);
+          }
+          this.addFloatingText(this.state.player.position.x, this.state.player.position.y - 30, '+5 Choppers (free)', '#FF00FF');
+        } else if (key === 'e') {
+          // Add 5 free collectors
+          for (let i = 0; i < 5; i++) {
+            this.spawnWorkerSilent(WorkerType.Collector);
+          }
+          this.addFloatingText(this.state.player.position.x, this.state.player.position.y - 30, '+5 Collectors (free)', '#FF00FF');
+        }
+      } else if (this.squadMenuOpen) {
+        // Squad menu actions
+        if (key === '1') {
+          // Add chopper to escort
+          this.addToEscort(WorkerType.Chopper, 1);
+        } else if (key === '2') {
+          // Add collector to escort
+          this.addToEscort(WorkerType.Collector, 1);
+        } else if (key === '3') {
+          // Release chopper from escort
+          this.releaseFromEscort(WorkerType.Chopper, 1);
+        } else if (key === '4') {
+          // Release collector from escort
+          this.releaseFromEscort(WorkerType.Collector, 1);
+        } else if (key === '5') {
+          // Release all
+          this.releaseAllEscort();
+        } else if (key === '!') {
+          // Add all choppers to escort (shift+1)
+          this.addToEscort(WorkerType.Chopper, 999);
+        } else if (key === '@') {
+          // Add all collectors to escort (shift+2)
+          this.addToEscort(WorkerType.Collector, 999);
         }
       }
     };
@@ -487,14 +587,15 @@ export class GameEngine {
       const chunkY = Math.floor(worldY / this.config.chunkSize);
       const chunkKey = `${chunkX},${chunkY}`;
 
-      // Only allow on platinum chunks that are in challenge mode (4x health)
-      if (!this.state.platinumChunks.has(chunkKey)) {
-        this.addFloatingText(worldX, worldY, 'Platinum chunks only!', '#FF4444');
+      // Only allow on silver+ tier chunks that are in challenge mode
+      const tier = this.getChunkTier(chunkKey);
+      if (tier < 2) {
+        this.addFloatingText(worldX, worldY, 'Silver+ tier only!', '#FF4444');
         return;
       }
 
       if (!this.state.challengeChunks.has(chunkKey)) {
-        this.addFloatingText(worldX, worldY, 'Must be at 4x health!', '#FF4444');
+        this.addFloatingText(worldX, worldY, 'Must be in challenge mode!', '#FF4444');
         return;
       }
 
@@ -610,7 +711,9 @@ export class GameEngine {
         workers,
         worldSeed: this.state.worldSeed,
         woodDrops,
-        clearedChunks: Array.from(this.state.clearedChunks),
+        bronzeChunks: Array.from(this.state.bronzeChunks),
+        silverChunks: Array.from(this.state.silverChunks),
+        goldChunks: Array.from(this.state.goldChunks),
         platinumChunks: Array.from(this.state.platinumChunks),
         challengeChunks: Array.from(this.state.challengeChunks),
         chunkToggleCooldowns: Array.from(this.state.chunkToggleCooldowns.entries()).map(([key, time]) => ({ key, time })),
@@ -738,13 +841,29 @@ export class GameEngine {
         }
       }
 
-      // Restore cleared chunks (gold bordered)
-      if (data.clearedChunks && data.clearedChunks.length > 0) {
-        this.state.clearedChunks = new Set(data.clearedChunks);
+      // Restore chunk tiers (with backward compatibility)
+      // Legacy: clearedChunks -> bronzeChunks, old platinumChunks -> silverChunks
+      if (data.bronzeChunks && data.bronzeChunks.length > 0) {
+        this.state.bronzeChunks = new Set(data.bronzeChunks);
+      } else if (data.clearedChunks && data.clearedChunks.length > 0) {
+        // Backward compatibility: old clearedChunks -> bronzeChunks
+        this.state.bronzeChunks = new Set(data.clearedChunks);
       }
 
-      // Restore platinum chunks
-      if (data.platinumChunks && data.platinumChunks.length > 0) {
+      if (data.silverChunks && data.silverChunks.length > 0) {
+        this.state.silverChunks = new Set(data.silverChunks);
+      } else if (data.platinumChunks && data.platinumChunks.length > 0 && !data.silverChunks) {
+        // Backward compatibility: old platinumChunks -> silverChunks (only if no silverChunks)
+        this.state.silverChunks = new Set(data.platinumChunks);
+      }
+
+      if (data.goldChunks && data.goldChunks.length > 0) {
+        this.state.goldChunks = new Set(data.goldChunks);
+      }
+
+      // New platinum chunks (tier 4)
+      if (data.platinumChunks && data.platinumChunks.length > 0 && data.silverChunks) {
+        // Only load as new platinum if we have the new tier system
         this.state.platinumChunks = new Set(data.platinumChunks);
       }
 
@@ -861,8 +980,8 @@ export class GameEngine {
     for (const [key, chunk] of this.state.chunks) {
       if (!this.state.challengeChunks.has(key)) continue;
 
-      // Platinum chunks get 4x health, gold chunks get 2x
-      const multiplier = this.state.platinumChunks.has(key) ? 4 : 2;
+      // Get multiplier based on tier
+      const multiplier = this.getChallengeMultiplierForTier(key);
 
       for (const tree of chunk.trees) {
         // If tree is alive and has exactly maxHealth, it just respawned - apply multiplier
@@ -990,13 +1109,31 @@ export class GameEngine {
     this.state.player.velocity.x = 0;
     this.state.player.velocity.y = 0;
 
-    // Clear player waypoint since we're home
-    this.state.playerWaypoint = null;
+    // Bring escort workers with the player
+    const escortingWorkers = this.state.workers.filter(w => w.isEscorting);
+    for (let i = 0; i < escortingWorkers.length; i++) {
+      // Position escorts in a circle around the player
+      const angle = (i / escortingWorkers.length) * Math.PI * 2;
+      const radius = 30 + Math.floor(i / 8) * 20; // Expand radius for more workers
+      escortingWorkers[i].position.x = Math.cos(angle) * radius;
+      escortingWorkers[i].position.y = Math.sin(angle) * radius;
+      escortingWorkers[i].velocity.x = 0;
+      escortingWorkers[i].velocity.y = 0;
+    }
+
+    // NOTE: Player waypoint is intentionally NOT cleared on teleport
+    // so players can easily return to where they were exploring
+
+    // Save immediately after teleport to ensure waypoint is persisted
+    this.saveProgress();
 
     // Spawn particles at new location
     this.spawnMoneyParticles(0, 0);
 
-    this.addFloatingText(0, -30, `Teleported! -$${cost}`, '#FFD700');
+    const escortCount = escortingWorkers.length;
+    const escortText = escortCount > 0 ? ` (+${escortCount} squad)` : '';
+    const waypointText = this.state.playerWaypoint ? ' (waypoint saved)' : '';
+    this.addFloatingText(0, -30, `Teleported! -$${cost}${escortText}${waypointText}`, '#FFD700');
     return true;
   }
 
@@ -1043,6 +1180,44 @@ export class GameEngine {
     );
   }
 
+  public changeSeed(newSeed: number): void {
+    this.state.worldSeed = newSeed;
+    // Clear all existing chunks to regenerate with new seed
+    this.state.chunks.clear();
+    // Regenerate chunks around player
+    updateChunks(this.state.chunks, this.state.camera, this.config, this.state.worldSeed);
+    this.addFloatingText(
+      this.state.player.position.x,
+      this.state.player.position.y - 30,
+      `Seed changed to: ${newSeed}`,
+      '#FF00FF'
+    );
+  }
+
+  public simulateOfflineProgress(seconds: number): void {
+    // Simulate worker progress for the given number of seconds
+    // This is a simplified simulation that just gives resources
+    const chopperCount = this.state.workers.filter(w => w.type === WorkerType.Chopper).length;
+    const collectorCount = this.state.workers.filter(w => w.type === WorkerType.Collector).length;
+
+    // Estimate wood per second (rough approximation)
+    const woodPerSecond = (chopperCount * 0.5) + (collectorCount * 0.3);
+    const totalWood = Math.floor(woodPerSecond * seconds);
+
+    // Add money directly (assume auto-sell)
+    const moneyGained = totalWood;
+    this.state.money += moneyGained;
+    this.state.totalWoodChopped += totalWood;
+    this.state.totalMoneyEarned += moneyGained;
+
+    this.addFloatingText(
+      this.state.player.position.x,
+      this.state.player.position.y - 50,
+      `Offline: +$${moneyGained.toLocaleString()}`,
+      '#FFD700'
+    );
+  }
+
   public toggleCheatMenu(): void {
     this.cheatMenuOpen = !this.cheatMenuOpen;
     if (this.cheatMenuOpen) {
@@ -1063,6 +1238,108 @@ export class GameEngine {
 
   public isTreeChecklistOpen(): boolean {
     return this.treeChecklistOpen;
+  }
+
+  public toggleSquadMenu(): void {
+    this.squadMenuOpen = !this.squadMenuOpen;
+    if (this.squadMenuOpen) {
+      this.cheatMenuOpen = false;
+      this.treeChecklistOpen = false;
+    }
+  }
+
+  public isSquadMenuOpen(): boolean {
+    return this.squadMenuOpen;
+  }
+
+  // Add workers to escort squad
+  public addToEscort(type: WorkerType, count: number): number {
+    const availableWorkers = this.state.workers.filter(
+      w => w.type === type && !w.isEscorting && w.state !== WorkerState.Resting
+    );
+    const toAdd = Math.min(count, availableWorkers.length);
+
+    for (let i = 0; i < toAdd; i++) {
+      availableWorkers[i].isEscorting = true;
+      availableWorkers[i].state = WorkerState.Escorting;
+      availableWorkers[i].targetTree = null;
+      availableWorkers[i].targetDrop = null;
+      availableWorkers[i].targetApple = null;
+    }
+
+    if (toAdd > 0) {
+      const typeName = type === WorkerType.Chopper ? 'Chopper' : 'Collector';
+      this.addFloatingText(
+        this.state.player.position.x,
+        this.state.player.position.y - 30,
+        `+${toAdd} ${typeName}${toAdd > 1 ? 's' : ''} following!`,
+        '#44FF44'
+      );
+    }
+    return toAdd;
+  }
+
+  // Release workers from escort squad
+  public releaseFromEscort(type: WorkerType, count: number): number {
+    const escortingWorkers = this.state.workers.filter(
+      w => w.type === type && w.isEscorting
+    );
+    const toRelease = Math.min(count, escortingWorkers.length);
+
+    for (let i = 0; i < toRelease; i++) {
+      escortingWorkers[i].isEscorting = false;
+      escortingWorkers[i].state = WorkerState.Idle;
+    }
+
+    if (toRelease > 0) {
+      const typeName = type === WorkerType.Chopper ? 'Chopper' : 'Collector';
+      this.addFloatingText(
+        this.state.player.position.x,
+        this.state.player.position.y - 30,
+        `Released ${toRelease} ${typeName}${toRelease > 1 ? 's' : ''}`,
+        '#FFAA44'
+      );
+    }
+    return toRelease;
+  }
+
+  // Release all escort workers
+  public releaseAllEscort(): void {
+    const escortingWorkers = this.state.workers.filter(w => w.isEscorting);
+    for (const worker of escortingWorkers) {
+      worker.isEscorting = false;
+      worker.state = WorkerState.Idle;
+    }
+    if (escortingWorkers.length > 0) {
+      this.addFloatingText(
+        this.state.player.position.x,
+        this.state.player.position.y - 30,
+        `Released all ${escortingWorkers.length} workers`,
+        '#FFAA44'
+      );
+    }
+  }
+
+  // Get escort counts
+  public getEscortCounts(): { choppers: number; collectors: number } {
+    const choppers = this.state.workers.filter(
+      w => w.type === WorkerType.Chopper && w.isEscorting
+    ).length;
+    const collectors = this.state.workers.filter(
+      w => w.type === WorkerType.Collector && w.isEscorting
+    ).length;
+    return { choppers, collectors };
+  }
+
+  // Get available (non-escorting, non-resting) worker counts
+  public getAvailableWorkerCounts(): { choppers: number; collectors: number } {
+    const choppers = this.state.workers.filter(
+      w => w.type === WorkerType.Chopper && !w.isEscorting && w.state !== WorkerState.Resting
+    ).length;
+    const collectors = this.state.workers.filter(
+      w => w.type === WorkerType.Collector && !w.isEscorting && w.state !== WorkerState.Resting
+    ).length;
+    return { choppers, collectors };
   }
 
   private spawnWorkerSilent(type: WorkerType): void {
@@ -1102,6 +1379,8 @@ export class GameEngine {
       // Apple collection (collectors only)
       targetApple: null,
       carryingApple: false,
+      // Escort mode
+      isEscorting: false,
     };
 
     this.state.workers.push(worker);
@@ -1162,9 +1441,37 @@ export class GameEngine {
     this.animationId = requestAnimationFrame(this.gameLoop);
   };
 
+  // Calculate milestone bonuses from tree chop counts
+  private calculateMilestoneBonuses(): MilestoneBonuses {
+    let speedPercent = 0;
+    let powerPercent = 0;
+    let chopSpeedPercent = 0;
+
+    for (const [treeType, count] of this.state.treeChoppedCounts) {
+      const milestone = TREE_CHOP_MILESTONES[treeType as TreeType];
+      if (!milestone) continue;
+
+      const milestoneCount = Math.floor(count / milestone.perMilestone);
+      const bonus = milestoneCount * milestone.bonusPercent;
+
+      if (milestone.bonusType === 'speed') {
+        speedPercent += bonus;
+      } else if (milestone.bonusType === 'power') {
+        powerPercent += bonus;
+      } else if (milestone.bonusType === 'chopSpeed') {
+        chopSpeedPercent += bonus;
+      }
+    }
+
+    return { speedPercent, powerPercent, chopSpeedPercent };
+  }
+
   private update(deltaTime: number): void {
+    // Calculate milestone bonuses
+    const milestoneBonuses = this.calculateMilestoneBonuses();
+
     // Update player position based on input
-    updatePlayer(this.state.player, this.state.input, deltaTime, this.config, this.state.upgrades);
+    updatePlayer(this.state.player, this.state.input, deltaTime, this.config, this.state.upgrades, milestoneBonuses);
 
     // Check tree collisions for player
     this.handleTreeCollisions(this.state.player.position, 6);
@@ -1207,6 +1514,18 @@ export class GameEngine {
       }
     }
 
+    // Update platinum chunk regeneration timers
+    for (const [key, time] of this.platinumChunkRegenTimers) {
+      const newTime = time - deltaTime;
+      if (newTime <= 0) {
+        this.platinumChunkRegenTimers.delete(key);
+        // Regenerate all trees in this platinum chunk
+        this.regeneratePlatinumChunk(key);
+      } else {
+        this.platinumChunkRegenTimers.set(key, newTime);
+      }
+    }
+
     // Update regenerate button cooldown
     if (this.regenCooldown > 0) {
       this.regenCooldown = Math.max(0, this.regenCooldown - deltaTime);
@@ -1225,11 +1544,13 @@ export class GameEngine {
       this.pendingChop = false;
     }
 
-    // Handle selling at chipper and eating apples
+    // Handle selling at chipper
     if (this.state.input.interact) {
       this.trySellWood();
-      this.tryEatApple();
     }
+
+    // Handle eating apples (supports holding E to eat rapidly)
+    this.tryEatApple(deltaTime);
 
     // Update apple buff timer
     this.updateAppleBuff(deltaTime);
@@ -1253,11 +1574,15 @@ export class GameEngine {
     const nearestTree = this.findNearestChoppableTree();
     if (!nearestTree) return;
 
-    // Start chop animation
-    startChop(this.state.player, this.config, this.state.upgrades);
+    // Calculate milestone bonuses for chop speed and power
+    const milestoneBonuses = this.calculateMilestoneBonuses();
 
-    // Deal damage to tree (40% compound per level, base damage 1)
-    const damage = Math.pow(1.4, this.state.upgrades.axePower - 1);
+    // Start chop animation (with milestone chop speed bonus)
+    startChop(this.state.player, this.config, this.state.upgrades, milestoneBonuses);
+
+    // Deal damage to tree (40% compound per level, base damage 1) plus milestone power bonus
+    const baseDamage = Math.pow(1.4, this.state.upgrades.axePower - 1);
+    const damage = baseDamage * (1 + milestoneBonuses.powerPercent / 100);
     const wasDestroyed = damageTree(nearestTree, damage, this.config);
 
     // Spawn wood particles on hit
@@ -1426,8 +1751,17 @@ export class GameEngine {
     }
   }
 
-  private tryEatApple(): void {
-    const { player, applePile, appleBuff } = this.state;
+  // Track apple eating cooldown for hold-to-eat feature
+  private appleEatCooldown: number = 0;
+  private readonly APPLE_EAT_INTERVAL: number = 0.2; // Eat one apple every 0.2 seconds while holding E
+
+  private tryEatApple(deltaTime: number): void {
+    const { player, applePile, appleBuff, input } = this.state;
+
+    // Update apple eat cooldown
+    if (this.appleEatCooldown > 0) {
+      this.appleEatCooldown -= deltaTime;
+    }
 
     // Check if there are apples to eat
     if (applePile.count <= 0) return;
@@ -1437,7 +1771,8 @@ export class GameEngine {
     const dy = player.position.y - applePile.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
 
-    if (dist < 60) {
+    // Allow eating if holding E and cooldown is ready
+    if (dist < 60 && input.interact && this.appleEatCooldown <= 0) {
       // Eat an apple
       this.state.applePile.count--;
 
@@ -1460,8 +1795,8 @@ export class GameEngine {
       // Spawn apple-colored particles
       this.spawnAppleParticles(player.position.x, player.position.y);
 
-      // Reset interact to prevent repeated eating
-      this.state.input.interact = false;
+      // Set cooldown for next apple (allows holding E to eat rapidly)
+      this.appleEatCooldown = this.APPLE_EAT_INTERVAL;
     }
   }
 
@@ -1774,6 +2109,8 @@ export class GameEngine {
       // Apple collection (collectors only)
       targetApple: null,
       carryingApple: false,
+      // Escort mode
+      isEscorting: false,
     };
 
     this.state.workers.push(worker);
@@ -1842,6 +2179,31 @@ export class GameEngine {
       if (worker.targetDrop && (worker.targetDrop.amount <= 0 || !woodDropSet.has(worker.targetDrop))) {
         worker.targetDrop = null;
         worker.state = WorkerState.Idle;
+      }
+
+      // Handle escorting workers - they follow the player
+      if (worker.isEscorting) {
+        const playerPos = this.state.player.position;
+        const dx = playerPos.x - worker.position.x;
+        const dy = playerPos.y - worker.position.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        // Follow if more than 40 pixels away, stop if within 25 pixels
+        if (dist > 40) {
+          const speed = effectiveSpeed;
+          worker.velocity.x = (dx / dist) * speed;
+          worker.velocity.y = (dy / dist) * speed;
+          worker.facingRight = dx > 0;
+        } else if (dist < 25) {
+          worker.velocity.x = 0;
+          worker.velocity.y = 0;
+        }
+
+        // Update position
+        worker.position.x += worker.velocity.x * deltaTime;
+        worker.position.y += worker.velocity.y * deltaTime;
+        worker.lastPosition = { ...worker.position };
+        continue; // Skip normal worker AI
       }
 
       switch (worker.state) {
@@ -2716,7 +3078,26 @@ export class GameEngine {
     return nearest;
   }
 
-  // Check if a chunk is now fully cleared (all trees dead) and mark it as gold/platinum bordered
+  // Get the current tier of a chunk (0 = none, 1 = bronze, 2 = silver, 3 = gold, 4 = platinum)
+  private getChunkTier(key: string): number {
+    if (this.state.platinumChunks.has(key)) return 4;
+    if (this.state.goldChunks.has(key)) return 3;
+    if (this.state.silverChunks.has(key)) return 2;
+    if (this.state.bronzeChunks.has(key)) return 1;
+    return 0;
+  }
+
+  // Get challenge multiplier based on current tier (2x for bronze, 4x for silver, 8x for gold)
+  public getChallengeMultiplierForTier(key: string): number {
+    const tier = this.getChunkTier(key);
+    if (tier === 1) return 2;  // Bronze -> 2x challenge for silver
+    if (tier === 2) return 4;  // Silver -> 4x challenge for gold
+    if (tier === 3) return 8;  // Gold -> 8x challenge for platinum
+    if (tier === 4) return 8;  // Platinum stays at 8x for farming
+    return 2;  // Default 2x
+  }
+
+  // Check if a chunk is now fully cleared and upgrade its tier
   private checkChunkCleared(treeX: number, treeY: number): void {
     const chunkX = Math.floor(treeX / this.config.chunkSize);
     const chunkY = Math.floor(treeY / this.config.chunkSize);
@@ -2732,27 +3113,81 @@ export class GameEngine {
     const centerX = chunkX * this.config.chunkSize + this.config.chunkSize / 2;
     const centerY = chunkY * this.config.chunkSize + this.config.chunkSize / 2;
 
-    // Check if in challenge mode - upgrade to platinum
-    if (this.state.challengeChunks.has(key)) {
-      if (!this.state.platinumChunks.has(key)) {
-        this.state.platinumChunks.add(key);
-        this.addFloatingText(centerX, centerY, 'PLATINUM CHUNK!', '#E5E4E2');
+    const currentTier = this.getChunkTier(key);
+    const isChallenge = this.state.challengeChunks.has(key);
+
+    // Tier upgrade logic
+    if (isChallenge && currentTier < 4) {
+      // Cleared in challenge mode - upgrade tier
+      const newTier = currentTier + 1;
+      const tierNames = ['', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM'];
+      const tierColors = ['', '#CD7F32', '#C0C0C0', '#FFD700', '#E5E4E2'];
+
+      // Add to new tier set
+      if (newTier === 1) this.state.bronzeChunks.add(key);
+      else if (newTier === 2) this.state.silverChunks.add(key);
+      else if (newTier === 3) this.state.goldChunks.add(key);
+      else if (newTier === 4) this.state.platinumChunks.add(key);
+
+      this.addFloatingText(centerX, centerY, `${tierNames[newTier]} CHUNK!`, tierColors[newTier]);
+
+      // High tier chunks (silver+) regenerate in challenge mode
+      if (newTier >= 2) {
+        this.platinumChunkRegenTimers.set(key, 30);
+        this.addFloatingText(centerX, centerY - 20, 'Trees regen in 30s', '#AAAAAA');
       }
-      // Disable challenge mode after clearing
-      this.state.challengeChunks.delete(key);
-    } else if (!this.state.clearedChunks.has(key) && !this.state.platinumChunks.has(key)) {
-      // First time clear - gold
-      this.state.clearedChunks.add(key);
-      this.addFloatingText(centerX, centerY, 'CHUNK CLEARED!', '#FFD700');
+    } else if (currentTier === 0 && !isChallenge) {
+      // First time clear (no challenge) - bronze
+      this.state.bronzeChunks.add(key);
+      this.addFloatingText(centerX, centerY, 'BRONZE CHUNK!', '#CD7F32');
+    } else if (isChallenge && currentTier >= 2) {
+      // Already silver+ and in challenge mode - start regen timer
+      this.platinumChunkRegenTimers.set(key, 30);
+      this.addFloatingText(centerX, centerY, 'Trees regen in 30s', '#AAAAAA');
     }
   }
 
-  // Toggle challenge mode on a gold/platinum chunk (only when fully zoomed out)
+  // Regenerate all trees in a high-tier chunk (called when regen timer expires)
+  private regeneratePlatinumChunk(key: string): void {
+    const chunk = this.state.chunks.get(key);
+    if (!chunk) return;
+
+    // Only regen if it's a silver+ tier chunk in challenge mode
+    const tier = this.getChunkTier(key);
+    if (tier < 2) return; // Bronze doesn't auto-regen
+    if (!this.state.challengeChunks.has(key)) return;
+
+    const [chunkX, chunkY] = key.split(',').map(Number);
+    const centerX = chunkX * this.config.chunkSize + this.config.chunkSize / 2;
+    const centerY = chunkY * this.config.chunkSize + this.config.chunkSize / 2;
+
+    // Get health multiplier based on tier
+    const healthMultiplier = this.getChallengeMultiplierForTier(key);
+
+    // Regenerate all trees with appropriate health
+    let regenCount = 0;
+    for (const tree of chunk.trees) {
+      if (tree.isDead) {
+        tree.isDead = false;
+        tree.respawnTimer = 0;
+        tree.health = tree.maxHealth * healthMultiplier;
+        this.deadTreesMap.delete(tree.id);
+        regenCount++;
+      }
+    }
+
+    if (regenCount > 0) {
+      this.addFloatingText(centerX, centerY, `${regenCount} trees regenerated!`, '#E5E4E2');
+    }
+  }
+
+  // Toggle challenge mode on a tiered chunk (only when fully zoomed out)
   public toggleChunkChallenge(chunkX: number, chunkY: number): boolean {
     const key = `${chunkX},${chunkY}`;
 
-    // Can only toggle on gold or platinum chunks
-    if (!this.state.clearedChunks.has(key) && !this.state.platinumChunks.has(key)) {
+    // Can only toggle on chunks with at least bronze tier
+    const tier = this.getChunkTier(key);
+    if (tier === 0) {
       return false;
     }
 
@@ -2775,6 +3210,8 @@ export class GameEngine {
     const centerX = chunkX * this.config.chunkSize + this.config.chunkSize / 2;
     const centerY = chunkY * this.config.chunkSize + this.config.chunkSize / 2;
 
+    const healthMultiplier = this.getChallengeMultiplierForTier(key);
+
     if (this.state.challengeChunks.has(key)) {
       // Turn OFF challenge mode
       this.state.challengeChunks.delete(key);
@@ -2782,18 +3219,16 @@ export class GameEngine {
     } else {
       // Turn ON challenge mode
       this.state.challengeChunks.add(key);
-      this.addFloatingText(centerX, centerY, 'CHALLENGE ON!', '#FF6600');
+      this.addFloatingText(centerX, centerY, `${healthMultiplier}X CHALLENGE!`, '#FF6600');
     }
 
     // Respawn all trees in this chunk with appropriate health
     const isChallenge = this.state.challengeChunks.has(key);
-    const isPlatinum = this.state.platinumChunks.has(key);
-    // Platinum gets 4x health, gold gets 2x health
-    const healthMultiplier = isChallenge ? (isPlatinum ? 4 : 2) : 1;
+    const finalMultiplier = isChallenge ? healthMultiplier : 1;
     for (const tree of chunk.trees) {
       tree.isDead = false;
       tree.respawnTimer = 0;
-      tree.health = tree.maxHealth * healthMultiplier;
+      tree.health = tree.maxHealth * finalMultiplier;
       // Also remove from dead trees map so save/load works correctly
       this.deadTreesMap.delete(tree.id);
     }
@@ -2804,14 +3239,13 @@ export class GameEngine {
     return true;
   }
 
-  // Check if a tree is in a challenge chunk and return multiplier (0 = not challenge, 2 = gold, 4 = platinum)
+  // Check if a tree is in a challenge chunk and return multiplier
   public getChallengeMultiplier(treeX: number, treeY: number): number {
     const chunkX = Math.floor(treeX / this.config.chunkSize);
     const chunkY = Math.floor(treeY / this.config.chunkSize);
     const key = `${chunkX},${chunkY}`;
     if (!this.state.challengeChunks.has(key)) return 1;
-    // Platinum chunks get 4x, gold chunks get 2x
-    return this.state.platinumChunks.has(key) ? 4 : 2;
+    return this.getChallengeMultiplierForTier(key);
   }
 
   // Load 3x3 chunks around each worker and waypoint so they can always find trees/drops
@@ -2926,6 +3360,6 @@ export class GameEngine {
   }
 
   private render(): void {
-    render(this.ctx, this.state, this.sprites, this.config, this.catchUpTimeRemaining, this.waypointPlacementMode, this.regenCooldown, this.cheatMenuOpen, this.treeChecklistOpen);
+    render(this.ctx, this.state, this.sprites, this.config, this.catchUpTimeRemaining, this.waypointPlacementMode, this.regenCooldown, this.cheatMenuOpen, this.treeChecklistOpen, this.squadMenuOpen);
   }
 }

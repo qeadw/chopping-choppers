@@ -67,7 +67,7 @@ export const TREE_STATS: Record<TreeType, { health: number; woodDrop: number; hi
   [TreeType.VoidTree]: { health: 600, woodDrop: 1000, hitboxRadius: 14, spawnChance: '0.001%' },
   [TreeType.CosmicTree]: { health: 1000, woodDrop: 2500, hitboxRadius: 12, spawnChance: '0.0001%' },
   [TreeType.DivineTree]: { health: 1500, woodDrop: 5000, hitboxRadius: 16, spawnChance: '0.00001%' },
-  [TreeType.WorldTree]: { health: 2500, woodDrop: 12500, hitboxRadius: 20, spawnChance: '0.000001%' },
+  [TreeType.WorldTree]: { health: 2500, woodDrop: 12500, hitboxRadius: 35, spawnChance: '0.000001%' },
 };
 
 export interface WoodDrop {
@@ -140,6 +140,26 @@ export const UPGRADE_COSTS = {
   carryCapacity: [30, 100, 250, 600, 1500],
 };
 
+// Tree chop milestones - bonuses for chopping certain amounts of trees
+// Each milestone gives a small buff. Scale amount needed by rarity.
+export const TREE_CHOP_MILESTONES: Record<TreeType, { perMilestone: number; bonusType: 'speed' | 'power' | 'chopSpeed'; bonusPercent: number }> = {
+  [TreeType.SmallPine]: { perMilestone: 1000, bonusType: 'speed', bonusPercent: 1 },         // +1% speed per 1000
+  [TreeType.LargePine]: { perMilestone: 500, bonusType: 'power', bonusPercent: 1 },          // +1% power per 500
+  [TreeType.Oak]: { perMilestone: 250, bonusType: 'chopSpeed', bonusPercent: 1 },            // +1% chop speed per 250
+  [TreeType.DeadTree]: { perMilestone: 500, bonusType: 'speed', bonusPercent: 2 },           // +2% speed per 500
+  [TreeType.Birch]: { perMilestone: 200, bonusType: 'power', bonusPercent: 2 },              // +2% power per 200
+  [TreeType.Willow]: { perMilestone: 100, bonusType: 'chopSpeed', bonusPercent: 2 },         // +2% chop speed per 100
+  [TreeType.CherryBlossom]: { perMilestone: 50, bonusType: 'speed', bonusPercent: 3 },       // +3% speed per 50
+  [TreeType.GiantRedwood]: { perMilestone: 25, bonusType: 'power', bonusPercent: 3 },        // +3% power per 25
+  [TreeType.AncientOak]: { perMilestone: 10, bonusType: 'chopSpeed', bonusPercent: 3 },      // +3% chop speed per 10
+  [TreeType.MagicTree]: { perMilestone: 5, bonusType: 'speed', bonusPercent: 5 },            // +5% speed per 5
+  [TreeType.CrystalTree]: { perMilestone: 3, bonusType: 'power', bonusPercent: 5 },          // +5% power per 3
+  [TreeType.VoidTree]: { perMilestone: 2, bonusType: 'chopSpeed', bonusPercent: 5 },         // +5% chop speed per 2
+  [TreeType.CosmicTree]: { perMilestone: 1, bonusType: 'speed', bonusPercent: 10 },          // +10% speed per 1
+  [TreeType.DivineTree]: { perMilestone: 1, bonusType: 'power', bonusPercent: 10 },          // +10% power per 1
+  [TreeType.WorldTree]: { perMilestone: 1, bonusType: 'chopSpeed', bonusPercent: 15 },       // +15% chop speed per 1
+};
+
 // Worker (hirable helper) types
 export enum WorkerType {
   Chopper = 'chopper',
@@ -159,6 +179,7 @@ export enum WorkerState {
   MovingToApple = 'moving_to_apple',
   CollectingApple = 'collecting_apple',
   ReturningWithApple = 'returning_with_apple',
+  Escorting = 'escorting',  // Following the player in squad mode
 }
 
 export interface Worker {
@@ -190,6 +211,8 @@ export interface Worker {
   // Apple collection (collectors only)
   targetApple: AppleDrop | null;
   carryingApple: boolean;
+  // Escort/squad mode
+  isEscorting: boolean;      // Whether this worker is following the player
 }
 
 export const CHOPPER_COSTS = [100, 150, 225, 350, 500, 750, 1100];
@@ -276,9 +299,12 @@ export interface GameState {
   workers: Worker[];
   showStumpTimers: boolean;
   worldSeed: number;
-  clearedChunks: Set<string>;  // Chunks that were fully cleared at once (gold bordered)
-  platinumChunks: Set<string>; // Chunks cleared in challenge mode (platinum bordered)
-  challengeChunks: Set<string>; // Chunks with challenge mode enabled (2x health, 2x drops)
+  // Chunk completion tiers (each tier unlocks the next challenge level)
+  bronzeChunks: Set<string>;   // Tier 1: First clear (bronze bordered)
+  silverChunks: Set<string>;   // Tier 2: Clear bronze challenge 2x (silver bordered)
+  goldChunks: Set<string>;     // Tier 3: Clear silver challenge 4x (gold bordered)
+  platinumChunks: Set<string>; // Tier 4: Clear gold challenge 8x (platinum bordered)
+  challengeChunks: Set<string>; // Chunks with challenge mode enabled
   chunkToggleCooldowns: Map<string, number>; // Cooldown timers for chunk toggles (5 min)
   choppersEnabled: boolean;  // Whether choppers are active
   collectorsEnabled: boolean; // Whether collectors are active
@@ -294,7 +320,7 @@ export interface GameState {
   treeChoppedCounts: Map<TreeType, number>;
   // Apple drop notification
   appleDropNotification: { active: boolean; timer: number };
-  // Chunks with tree respawning disabled (platinum chunks only)
+  // Chunks with tree respawning disabled (high tier chunks only)
   noRespawnChunks: Set<string>;
   // UI visibility
   uiHidden: boolean;

@@ -86,23 +86,44 @@ export function generateChunk(chunkX: number, chunkY: number, config: GameConfig
       continue;
     }
 
-    // Weighted tree type selection (common trees halve, rare trees are 10x rarer each)
+    // Calculate chunk distance from spawn for rarity scaling and legendary tree restrictions
+    const chunkDistFromSpawn = Math.max(Math.abs(chunkX), Math.abs(chunkY));
+
+    // Distance-based rarity scaling: +1% per 100 chunks, capping at +10% at 1000 chunks
+    // This shifts probability from first 5 trees to last 5 trees (MagicTree and above)
+    const distanceBonus = Math.min(chunkDistFromSpawn / 100, 10) * 0.01; // 0 to 0.1
+
+    // Base probabilities for each tree type
+    // First 5 trees lose probability equally (distanceBonus / 5 each)
+    // Last 5 trees gain probability proportionally
+    const commonReduction = distanceBonus / 5;
+
+    // Weighted tree type selection with distance scaling
     const typeRoll = rng.next();
     let type: TreeType;
 
-    // Calculate chunk distance from spawn for legendary tree restrictions
-    const chunkDistFromSpawn = Math.max(Math.abs(chunkX), Math.abs(chunkY));
+    // Adjusted thresholds based on distance
+    // Base: SmallPine 50%, LargePine 25%, Oak 12.5%, DeadTree 6.25%, Birch 3.125%
+    const t0 = 0.5 - commonReduction;          // SmallPine
+    const t1 = 0.75 - commonReduction * 2;     // LargePine
+    const t2 = 0.875 - commonReduction * 3;    // Oak
+    const t3 = 0.9375 - commonReduction * 4;   // DeadTree
+    const t4 = 0.96875 - commonReduction * 5;  // Birch
 
-    if (typeRoll < 0.5) {
-      type = TreeType.SmallPine;        // 50%
-    } else if (typeRoll < 0.75) {
-      type = TreeType.LargePine;        // 25%
-    } else if (typeRoll < 0.875) {
-      type = TreeType.Oak;              // 12.5%
-    } else if (typeRoll < 0.9375) {
-      type = TreeType.DeadTree;         // 6.25%
-    } else if (typeRoll < 0.96875) {
-      type = TreeType.Birch;            // 3.125%
+    // Rare trees get the bonus distributed proportionally to their rarity
+    // MagicTree gets most of the bonus, WorldTree the least (proportional to original chance)
+    const rareBoost = distanceBonus / 5; // Split among 5 rare tree types
+
+    if (typeRoll < t0) {
+      type = TreeType.SmallPine;
+    } else if (typeRoll < t1) {
+      type = TreeType.LargePine;
+    } else if (typeRoll < t2) {
+      type = TreeType.Oak;
+    } else if (typeRoll < t3) {
+      type = TreeType.DeadTree;
+    } else if (typeRoll < t4) {
+      type = TreeType.Birch;
     } else if (typeRoll < 0.984375) {
       type = TreeType.Willow;           // 1.56%
     } else if (typeRoll < 0.9921875) {
@@ -111,18 +132,18 @@ export function generateChunk(chunkX: number, chunkY: number, config: GameConfig
       type = TreeType.GiantRedwood;     // 0.39%
     } else if (typeRoll < 0.998046875) {
       type = TreeType.AncientOak;       // 0.2%
-    } else if (typeRoll < 0.999) {
-      type = TreeType.MagicTree;        // 0.1%
-    } else if (typeRoll < 0.9999 && chunkDistFromSpawn > 1) {
-      type = TreeType.CrystalTree;      // 0.01% - not within 1 chunk of spawn
-    } else if (typeRoll < 0.99999 && chunkDistFromSpawn > 2) {
-      type = TreeType.VoidTree;         // 0.001% - not within 2 chunks of spawn
-    } else if (typeRoll < 0.999999 && chunkDistFromSpawn > 3) {
-      type = TreeType.CosmicTree;       // 0.0001% - not within 3 chunks of spawn
-    } else if (typeRoll < 0.9999999 && chunkDistFromSpawn > 4) {
-      type = TreeType.DivineTree;       // 0.00001% - not within 4 chunks of spawn
-    } else if (typeRoll >= 0.9999999 && chunkDistFromSpawn > 5) {
-      type = TreeType.WorldTree;        // 0.000001% - not within 5 chunks of spawn - LEGENDARY!
+    } else if (typeRoll < 0.999 + rareBoost) {
+      type = TreeType.MagicTree;        // 0.1% + bonus
+    } else if (typeRoll < 0.9991 + rareBoost * 0.8 && chunkDistFromSpawn > 1) {
+      type = TreeType.CrystalTree;      // 0.01% + bonus - not within 1 chunk of spawn
+    } else if (typeRoll < 0.99911 + rareBoost * 0.6 && chunkDistFromSpawn > 2) {
+      type = TreeType.VoidTree;         // 0.001% + bonus - not within 2 chunks of spawn
+    } else if (typeRoll < 0.999111 + rareBoost * 0.4 && chunkDistFromSpawn > 3) {
+      type = TreeType.CosmicTree;       // 0.0001% + bonus - not within 3 chunks of spawn
+    } else if (typeRoll < 0.9991111 + rareBoost * 0.2 && chunkDistFromSpawn > 4) {
+      type = TreeType.DivineTree;       // 0.00001% + bonus - not within 4 chunks of spawn
+    } else if (typeRoll >= 0.9991111 && chunkDistFromSpawn > 5) {
+      type = TreeType.WorldTree;        // 0.000001% + bonus - not within 5 chunks of spawn - LEGENDARY!
     } else {
       // Fallback to MagicTree if legendary tree can't spawn due to distance
       type = TreeType.MagicTree;
@@ -150,6 +171,43 @@ export function generateChunk(chunkX: number, chunkY: number, config: GameConfig
 
   // Sort trees by y position for proper depth ordering
   trees.sort((a, b) => a.y - b.y);
+
+  // Check if this chunk contains a World Tree - if so, make ALL trees mythic
+  const hasWorldTree = trees.some(tree => tree.type === TreeType.WorldTree);
+  if (hasWorldTree) {
+    // Replace all non-mythic trees with random mythic trees
+    const mythicTypes = [
+      TreeType.MagicTree,
+      TreeType.CrystalTree,
+      TreeType.VoidTree,
+      TreeType.CosmicTree,
+      TreeType.DivineTree,
+    ];
+
+    for (const tree of trees) {
+      if (tree.type < TreeType.MagicTree) {
+        // Pick a random mythic type (weighted towards lower tiers)
+        const mythicRoll = rng.next();
+        let newType: TreeType;
+        if (mythicRoll < 0.5) {
+          newType = TreeType.MagicTree;
+        } else if (mythicRoll < 0.75) {
+          newType = TreeType.CrystalTree;
+        } else if (mythicRoll < 0.9) {
+          newType = TreeType.VoidTree;
+        } else if (mythicRoll < 0.97) {
+          newType = TreeType.CosmicTree;
+        } else {
+          newType = TreeType.DivineTree;
+        }
+
+        const newStats = TREE_STATS[newType];
+        tree.type = newType;
+        tree.health = newStats.health;
+        tree.maxHealth = newStats.health;
+      }
+    }
+  }
 
   return {
     x: chunkX,

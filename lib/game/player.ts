@@ -1,5 +1,12 @@
 import { Player, InputState, Camera, GameConfig, Upgrades } from '../types';
 
+// Milestone bonuses interface
+export interface MilestoneBonuses {
+  speedPercent: number;   // Total % bonus to move speed
+  powerPercent: number;   // Total % bonus to chop power
+  chopSpeedPercent: number; // Total % bonus to chop speed
+}
+
 export function createPlayer(): Player {
   return {
     position: { x: 0, y: 0 },
@@ -18,7 +25,8 @@ export function updatePlayer(
   input: InputState,
   deltaTime: number,
   config: GameConfig,
-  upgrades: Upgrades
+  upgrades: Upgrades,
+  milestoneBonuses: MilestoneBonuses = { speedPercent: 0, powerPercent: 0, chopSpeedPercent: 0 }
 ): void {
   // Update chop timer
   if (player.chopTimer > 0) {
@@ -50,8 +58,9 @@ export function updatePlayer(
     vy /= len;
   }
 
-  // Apply speed with upgrade multiplier (10% compound per level)
-  const speed = config.playerSpeed * Math.pow(1.1, upgrades.moveSpeed - 1);
+  // Apply speed with upgrade multiplier (10% compound per level) plus milestone bonus
+  const baseSpeed = config.playerSpeed * Math.pow(1.1, upgrades.moveSpeed - 1);
+  const speed = baseSpeed * (1 + milestoneBonuses.speedPercent / 100);
   player.velocity.x = vx * speed;
   player.velocity.y = vy * speed;
 
@@ -64,10 +73,16 @@ export function canChop(player: Player): boolean {
   return player.chopTimer <= 0;
 }
 
-export function startChop(player: Player, config: GameConfig, upgrades: Upgrades): void {
+export function startChop(
+  player: Player,
+  config: GameConfig,
+  upgrades: Upgrades,
+  milestoneBonuses: MilestoneBonuses = { speedPercent: 0, powerPercent: 0, chopSpeedPercent: 0 }
+): void {
   player.isChopping = true;
-  // Chop speed: 10% faster per level (compound)
-  player.chopTimer = config.chopCooldown / Math.pow(1.1, upgrades.chopSpeed - 1);
+  // Chop speed: 10% faster per level (compound) plus milestone bonus
+  const baseCooldown = config.chopCooldown / Math.pow(1.1, upgrades.chopSpeed - 1);
+  player.chopTimer = baseCooldown / (1 + milestoneBonuses.chopSpeedPercent / 100);
 }
 
 export function updateCamera(camera: Camera, player: Player): void {
