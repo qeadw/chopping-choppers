@@ -13,6 +13,8 @@ export interface OptionsMenuState {
   effectiveWorkerUpgrades: { restSpeed: number; workDuration: number; workerSpeed: number; workerPower: number };
   maxUpgrades: { axePower: number; moveSpeed: number; chopSpeed: number; carryCapacity: number };
   maxWorkerUpgrades: { restSpeed: number; workDuration: number; workerSpeed: number; workerPower: number };
+  // Calculated stat values (actual values, not levels)
+  statValues: Record<string, { current: number; min: number; max: number }>;
 }
 
 export function render(
@@ -1219,7 +1221,7 @@ function drawChunkOverlay(
       ctx.fillText(`Placing ${modeName} waypoint - Click to place`, ctx.canvas.width / 2, ctx.canvas.height - 60);
     } else {
       ctx.fillStyle = '#FFD700';
-      ctx.fillText('Click completed chunks for CHALLENGE (Bronze: 2x | Silver: 4x | Gold/Plat: 8x)', ctx.canvas.width / 2, ctx.canvas.height - 60);
+      ctx.fillText('Click completed chunks for CHALLENGE (Bronze: 2x | Silver: 4x | Gold: 8x | Plat: 16x)', ctx.canvas.width / 2, ctx.canvas.height - 60);
     }
 
     ctx.fillStyle = '#AAAAAA';
@@ -1465,7 +1467,7 @@ function drawOptionsMenu(
   // Subtitle
   ctx.fillStyle = '#888';
   ctx.font = '10px monospace';
-  ctx.fillText('Arrow keys to navigate, Left/Right to adjust', menuX + menuWidth / 2, menuY + 42);
+  ctx.fillText('Arrows to navigate, L/R to adjust, Enter to type', menuX + menuWidth / 2, menuY + 42);
 
   const options = [
     // Player stats
@@ -1515,21 +1517,33 @@ function drawOptionsMenu(
     ctx.textAlign = 'right';
     if (opt.type === 'stat') {
       const isPlayerStat = ['axePower', 'moveSpeed', 'chopSpeed', 'carryCapacity'].includes(opt.key);
-      let current: number, max: number;
+      let currentLevel: number, maxLevel: number;
       if (isPlayerStat) {
-        current = menuState.effectiveUpgrades[opt.key as keyof typeof menuState.effectiveUpgrades];
-        max = menuState.maxUpgrades[opt.key as keyof typeof menuState.maxUpgrades];
+        currentLevel = menuState.effectiveUpgrades[opt.key as keyof typeof menuState.effectiveUpgrades];
+        maxLevel = menuState.maxUpgrades[opt.key as keyof typeof menuState.maxUpgrades];
       } else {
-        current = menuState.effectiveWorkerUpgrades[opt.key as keyof typeof menuState.effectiveWorkerUpgrades];
-        max = menuState.maxWorkerUpgrades[opt.key as keyof typeof menuState.maxWorkerUpgrades];
+        currentLevel = menuState.effectiveWorkerUpgrades[opt.key as keyof typeof menuState.effectiveWorkerUpgrades];
+        maxLevel = menuState.maxWorkerUpgrades[opt.key as keyof typeof menuState.maxWorkerUpgrades];
       }
-      const canDecrease = current > 1;
-      const canIncrease = current < max;
+      const canDecrease = currentLevel > 1;
+      const canIncrease = currentLevel < maxLevel;
+
+      // Get actual calculated values
+      const statVal = menuState.statValues[opt.key];
+      const formatValue = (v: number) => {
+        if (opt.key === 'carryCapacity') return Math.floor(v).toString();
+        if (['restSpeed', 'workDuration', 'workerSpeed', 'workerPower'].includes(opt.key)) {
+          return Math.round(v) + '%';
+        }
+        if (opt.key === 'chopSpeed') return v.toFixed(1) + '/s';
+        return v.toFixed(1);
+      };
 
       ctx.fillStyle = isSelected ? '#88AA44' : '#888';
       const leftArrow = canDecrease ? '< ' : '  ';
       const rightArrow = canIncrease ? ' >' : '  ';
-      ctx.fillText(`${leftArrow}${current}/${max}${rightArrow}`, menuX + menuWidth - 20, y);
+      // Show actual value (current/max) with arrows
+      ctx.fillText(`${leftArrow}${formatValue(statVal.current)}/${formatValue(statVal.max)}${rightArrow}`, menuX + menuWidth - 20, y);
     } else if (opt.type === 'button') {
       ctx.fillStyle = isSelected ? '#88CCFF' : '#888';
       ctx.fillText('>', menuX + menuWidth - 20, y);

@@ -551,12 +551,14 @@ export class GameEngine {
         } else if (key === 'arrowright' || key === 'd') {
           this.adjustOptionValue(1);
         } else if (key === 'enter' || key === ' ') {
-          // Check if Keybinds button is selected
           const opt = options[this.optionsMenuSelection];
           if (opt && opt.type === 'button' && opt.key === 'keybinds') {
             this.optionsMenuOpen = false;
             this.keybindsMenuOpen = true;
             this.keybindsMenuSelection = 0;
+          } else if (opt && opt.type === 'stat') {
+            // Prompt for value input
+            this.promptStatValue(opt.key);
           }
         } else if (key === 'escape' || matchKey('optionsMenu')) {
           this.optionsMenuOpen = false;
@@ -1410,9 +1412,7 @@ export class GameEngine {
       this.squadMenuOpen = false;
       this.optionsMenuSelection = 0;
       this.editingKeybind = null;
-      // Sync effective upgrades with actual upgrades on open
-      this.effectiveUpgrades = { ...this.state.upgrades };
-      this.effectiveWorkerUpgrades = { ...this.state.workerUpgrades };
+      // Don't reset effective upgrades - preserve user's choices
     }
   }
 
@@ -1428,7 +1428,33 @@ export class GameEngine {
     effectiveWorkerUpgrades: { restSpeed: number; workDuration: number; workerSpeed: number; workerPower: number };
     maxUpgrades: { axePower: number; moveSpeed: number; chopSpeed: number; carryCapacity: number };
     maxWorkerUpgrades: { restSpeed: number; workDuration: number; workerSpeed: number; workerPower: number };
+    statValues: Record<string, { current: number; min: number; max: number }>;
   } {
+    // Calculate actual stat values for all stats
+    const statValues: Record<string, { current: number; min: number; max: number }> = {};
+    const playerStats = ['axePower', 'moveSpeed', 'chopSpeed', 'carryCapacity'];
+    const workerStats = ['restSpeed', 'workDuration', 'workerSpeed', 'workerPower'];
+
+    for (const key of playerStats) {
+      const currentLevel = this.effectiveUpgrades[key as keyof typeof this.effectiveUpgrades];
+      const maxLevel = this.state.upgrades[key as keyof typeof this.state.upgrades];
+      statValues[key] = {
+        current: this.getStatValue(key, currentLevel),
+        min: this.getStatValue(key, 1),
+        max: this.getStatValue(key, maxLevel),
+      };
+    }
+
+    for (const key of workerStats) {
+      const currentLevel = this.effectiveWorkerUpgrades[key as keyof typeof this.effectiveWorkerUpgrades];
+      const maxLevel = this.state.workerUpgrades[key as keyof typeof this.state.workerUpgrades];
+      statValues[key] = {
+        current: this.getStatValue(key, currentLevel),
+        min: this.getStatValue(key, 1),
+        max: this.getStatValue(key, maxLevel),
+      };
+    }
+
     return {
       selection: this.optionsMenuSelection,
       editingKeybind: this.editingKeybind,
@@ -1437,6 +1463,7 @@ export class GameEngine {
       effectiveWorkerUpgrades: this.effectiveWorkerUpgrades,
       maxUpgrades: this.state.upgrades,
       maxWorkerUpgrades: this.state.workerUpgrades,
+      statValues,
     };
   }
 
@@ -1496,6 +1523,122 @@ export class GameEngine {
 
   public getEffectiveWorkerUpgrades(): typeof this.effectiveWorkerUpgrades {
     return this.effectiveWorkerUpgrades;
+  }
+
+  // Calculate actual stat values from upgrade levels
+  public getStatValue(key: string, level: number): number {
+    switch (key) {
+      case 'axePower':
+        // 40% compound per level, base damage 1
+        return Math.pow(1.4, level - 1);
+      case 'moveSpeed':
+        // 10% compound per level, base 150
+        return this.config.playerSpeed * Math.pow(1.1, level - 1);
+      case 'chopSpeed':
+        // Attacks per second: 1/cooldown, 10% faster per level
+        return 1 / (this.config.chopCooldown / Math.pow(1.1, level - 1));
+      case 'carryCapacity':
+        // Base 10, 50% compound per level
+        return Math.floor(10 * Math.pow(1.5, level - 1));
+      case 'restSpeed':
+        // 20% faster recovery per level (relative %)
+        return 100 * Math.pow(1.2, level - 1);
+      case 'workDuration':
+        // 5% more stamina per level (relative %)
+        return 100 * Math.pow(1.05, level - 1);
+      case 'workerSpeed':
+        // 20% faster per level (relative %)
+        return 100 * Math.pow(1.2, level - 1);
+      case 'workerPower':
+        // 20% more damage per level (relative %)
+        return 100 * Math.pow(1.2, level - 1);
+      default:
+        return level;
+    }
+  }
+
+  // Convert an actual stat value back to the nearest upgrade level
+  private valueToLevel(key: string, value: number): number {
+    switch (key) {
+      case 'axePower':
+        // value = 1.4^(level-1) => level = log(value)/log(1.4) + 1
+        return Math.max(1, Math.round(Math.log(value) / Math.log(1.4) + 1));
+      case 'moveSpeed':
+        // value = 150 * 1.1^(level-1) => level = log(value/150)/log(1.1) + 1
+        return Math.max(1, Math.round(Math.log(value / this.config.playerSpeed) / Math.log(1.1) + 1));
+      case 'chopSpeed':
+        // value = 1/(0.4/1.1^(level-1)) = 1.1^(level-1)/0.4
+        // value * 0.4 = 1.1^(level-1) => level = log(value*0.4)/log(1.1) + 1
+        return Math.max(1, Math.round(Math.log(value * this.config.chopCooldown) / Math.log(1.1) + 1));
+      case 'carryCapacity':
+        // value = 10 * 1.5^(level-1) => level = log(value/10)/log(1.5) + 1
+        return Math.max(1, Math.round(Math.log(value / 10) / Math.log(1.5) + 1));
+      case 'restSpeed':
+      case 'workDuration':
+      case 'workerSpeed':
+      case 'workerPower':
+        // value = 100 * multiplier^(level-1)
+        const multiplier = key === 'workDuration' ? 1.05 : 1.2;
+        return Math.max(1, Math.round(Math.log(value / 100) / Math.log(multiplier) + 1));
+      default:
+        return Math.max(1, Math.round(value));
+    }
+  }
+
+  // Prompt user for a stat value
+  private promptStatValue(key: string): void {
+    const isPlayerStat = ['axePower', 'moveSpeed', 'chopSpeed', 'carryCapacity'].includes(key);
+    const maxLevel = isPlayerStat
+      ? this.state.upgrades[key as keyof typeof this.state.upgrades]
+      : this.state.workerUpgrades[key as keyof typeof this.state.workerUpgrades];
+
+    const minValue = this.getStatValue(key, 1);
+    const maxValue = this.getStatValue(key, maxLevel);
+
+    // Format values for display
+    const formatValue = (v: number) => {
+      if (key === 'carryCapacity') return Math.floor(v).toString();
+      if (['restSpeed', 'workDuration', 'workerSpeed', 'workerPower'].includes(key)) {
+        return Math.round(v) + '%';
+      }
+      return v.toFixed(2);
+    };
+
+    const statNames: Record<string, string> = {
+      axePower: 'Axe Power (damage)',
+      moveSpeed: 'Move Speed',
+      chopSpeed: 'Chop Speed (attacks/sec)',
+      carryCapacity: 'Carry Capacity',
+      restSpeed: 'Rest Speed',
+      workDuration: 'Work Duration',
+      workerSpeed: 'Worker Speed',
+      workerPower: 'Worker Power',
+    };
+
+    const input = window.prompt(
+      `${statNames[key] || key}\nRange: ${formatValue(minValue)} to ${formatValue(maxValue)}\nEnter a value:`,
+      formatValue(maxValue)
+    );
+
+    if (input === null) return; // Cancelled
+
+    // Parse the input (remove % if present)
+    let parsed = parseFloat(input.replace('%', ''));
+    if (isNaN(parsed)) return;
+
+    // Clamp to valid range
+    parsed = Math.max(minValue, Math.min(maxValue, parsed));
+
+    // Convert to level and clamp
+    let level = this.valueToLevel(key, parsed);
+    level = Math.max(1, Math.min(maxLevel, level));
+
+    // Apply to effective upgrades
+    if (isPlayerStat) {
+      this.effectiveUpgrades[key as keyof typeof this.effectiveUpgrades] = level;
+    } else {
+      this.effectiveWorkerUpgrades[key as keyof typeof this.effectiveWorkerUpgrades] = level;
+    }
   }
 
   // Add workers to escort squad
@@ -3341,13 +3484,13 @@ export class GameEngine {
     return 0;
   }
 
-  // Get challenge multiplier based on current tier (2x for bronze, 4x for silver, 8x for gold)
+  // Get challenge multiplier based on current tier (2x for bronze, 4x for silver, 8x for gold, 16x for platinum)
   public getChallengeMultiplierForTier(key: string): number {
     const tier = this.getChunkTier(key);
-    if (tier === 1) return 2;  // Bronze -> 2x challenge for silver
-    if (tier === 2) return 4;  // Silver -> 4x challenge for gold
-    if (tier === 3) return 8;  // Gold -> 8x challenge for platinum
-    if (tier === 4) return 8;  // Platinum stays at 8x for farming
+    if (tier === 1) return 2;   // Bronze -> 2x challenge for silver
+    if (tier === 2) return 4;   // Silver -> 4x challenge for gold
+    if (tier === 3) return 8;   // Gold -> 8x challenge for platinum
+    if (tier === 4) return 16;  // Platinum -> 16x for farming (hardest)
     return 2;  // Default 2x
   }
 
