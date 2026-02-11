@@ -127,6 +127,8 @@ interface SaveData {
   // Effective upgrades (stats that can be lowered)
   effectiveUpgrades?: { axePower: number; moveSpeed: number; chopSpeed: number; carryCapacity: number };
   effectiveWorkerUpgrades?: { restSpeed: number; workDuration: number; workerSpeed: number; workerPower: number };
+  // Stat multipliers (0-1) for fine-grained control
+  statMultipliers?: Record<string, number>;
 }
 
 export class GameEngine {
@@ -175,6 +177,18 @@ export class GameEngine {
     workDuration: 1,
     workerSpeed: 1,
     workerPower: 1,
+  };
+
+  // Stat multipliers (0-1) applied to final calculated values, allowing true minimum of ~1
+  private statMultipliers = {
+    axePower: 1.0,
+    moveSpeed: 1.0,
+    chopSpeed: 1.0,
+    carryCapacity: 1.0,
+    restSpeed: 1.0,
+    workDuration: 1.0,
+    workerSpeed: 1.0,
+    workerPower: 1.0,
   };
 
   // Customizable keybinds (all game keybinds)
@@ -592,6 +606,21 @@ export class GameEngine {
       const screenX = e.clientX - rect.left;
       const screenY = e.clientY - rect.top;
 
+      // Check if cheat menu is open - clicking outside closes it
+      if (this.cheatMenuOpen) {
+        const menuWidth = 300;
+        const menuHeight = 480;
+        const menuX = (this.canvas.width - menuWidth) / 2;
+        const menuY = (this.canvas.height - menuHeight) / 2;
+
+        // If click is outside the menu, close it
+        if (screenX < menuX || screenX > menuX + menuWidth ||
+            screenY < menuY || screenY > menuY + menuHeight) {
+          this.cheatMenuOpen = false;
+        }
+        return; // Don't process other clicks while cheat menu is open
+      }
+
       // Check for regenerate button click (always works regardless of zoom)
       // Button position matches renderer: upgradeX, padding+260, upgradeWidth, 32
       const padding = 15;
@@ -853,6 +882,8 @@ export class GameEngine {
         // Effective upgrades
         effectiveUpgrades: this.effectiveUpgrades,
         effectiveWorkerUpgrades: this.effectiveWorkerUpgrades,
+        // Stat multipliers
+        statMultipliers: this.statMultipliers,
       };
       localStorage.setItem(SAVE_KEY, obfuscateSave(JSON.stringify(saveData)));
     } catch (e) {
@@ -1077,6 +1108,11 @@ export class GameEngine {
         this.effectiveWorkerUpgrades = { ...this.state.workerUpgrades };
       }
 
+      // Restore stat multipliers
+      if (data.statMultipliers) {
+        this.statMultipliers = { ...this.statMultipliers, ...data.statMultipliers };
+      }
+
       // Ensure effective upgrades don't exceed actual upgrades (in case upgrades changed)
       this.effectiveUpgrades.axePower = Math.min(this.effectiveUpgrades.axePower, this.state.upgrades.axePower);
       this.effectiveUpgrades.moveSpeed = Math.min(this.effectiveUpgrades.moveSpeed, this.state.upgrades.moveSpeed);
@@ -1086,6 +1122,11 @@ export class GameEngine {
       this.effectiveWorkerUpgrades.workDuration = Math.min(this.effectiveWorkerUpgrades.workDuration, this.state.workerUpgrades.workDuration);
       this.effectiveWorkerUpgrades.workerSpeed = Math.min(this.effectiveWorkerUpgrades.workerSpeed, this.state.workerUpgrades.workerSpeed);
       this.effectiveWorkerUpgrades.workerPower = Math.min(this.effectiveWorkerUpgrades.workerPower, this.state.workerUpgrades.workerPower);
+
+      // Ensure stat multipliers are valid (0-1 range)
+      for (const key of Object.keys(this.statMultipliers) as (keyof typeof this.statMultipliers)[]) {
+        this.statMultipliers[key] = Math.max(0.001, Math.min(1, this.statMultipliers[key]));
+      }
 
       console.log('Progress loaded!', {
         money: this.state.money,
@@ -1430,28 +1471,29 @@ export class GameEngine {
     maxWorkerUpgrades: { restSpeed: number; workDuration: number; workerSpeed: number; workerPower: number };
     statValues: Record<string, { current: number; min: number; max: number }>;
   } {
-    // Calculate actual stat values for all stats
+    // Calculate actual stat values for all stats with multipliers applied
     const statValues: Record<string, { current: number; min: number; max: number }> = {};
     const playerStats = ['axePower', 'moveSpeed', 'chopSpeed', 'carryCapacity'];
     const workerStats = ['restSpeed', 'workDuration', 'workerSpeed', 'workerPower'];
 
     for (const key of playerStats) {
-      const currentLevel = this.effectiveUpgrades[key as keyof typeof this.effectiveUpgrades];
-      const maxLevel = this.state.upgrades[key as keyof typeof this.state.upgrades];
+      const maxValue = this.getMaxStatValue(key);
+      const multiplier = this.statMultipliers[key as keyof typeof this.statMultipliers] ?? 1;
       statValues[key] = {
-        current: this.getStatValue(key, currentLevel),
-        min: this.getStatValue(key, 1),
-        max: this.getStatValue(key, maxLevel),
+        current: Math.max(1, maxValue * multiplier),
+        min: 1,
+        max: maxValue,
       };
     }
 
     for (const key of workerStats) {
-      const currentLevel = this.effectiveWorkerUpgrades[key as keyof typeof this.effectiveWorkerUpgrades];
       const maxLevel = this.state.workerUpgrades[key as keyof typeof this.state.workerUpgrades];
+      const maxValue = this.getStatValue(key, maxLevel);
+      const multiplier = this.statMultipliers[key as keyof typeof this.statMultipliers] ?? 1;
       statValues[key] = {
-        current: this.getStatValue(key, currentLevel),
-        min: this.getStatValue(key, 1),
-        max: this.getStatValue(key, maxLevel),
+        current: Math.max(1, maxValue * multiplier),
+        min: 1,
+        max: maxValue,
       };
     }
 
@@ -1502,19 +1544,12 @@ export class GameEngine {
     if (!opt || opt.type !== 'stat') return;
 
     const key = opt.key;
-    const isPlayerStat = ['axePower', 'moveSpeed', 'chopSpeed', 'carryCapacity'].includes(key);
 
-    if (isPlayerStat) {
-      const maxVal = this.state.upgrades[key as keyof typeof this.state.upgrades];
-      const current = this.effectiveUpgrades[key as keyof typeof this.effectiveUpgrades];
-      const newVal = Math.max(1, Math.min(maxVal, current + delta));
-      this.effectiveUpgrades[key as keyof typeof this.effectiveUpgrades] = newVal;
-    } else {
-      const maxVal = this.state.workerUpgrades[key as keyof typeof this.state.workerUpgrades];
-      const current = this.effectiveWorkerUpgrades[key as keyof typeof this.effectiveWorkerUpgrades];
-      const newVal = Math.max(1, Math.min(maxVal, current + delta));
-      this.effectiveWorkerUpgrades[key as keyof typeof this.effectiveWorkerUpgrades] = newVal;
-    }
+    // Adjust the stat multiplier by 5% per step
+    const currentMultiplier = this.statMultipliers[key as keyof typeof this.statMultipliers] ?? 1;
+    const step = 0.05; // 5% per arrow key press
+    const newMultiplier = Math.max(0.001, Math.min(1, currentMultiplier + delta * step));
+    this.statMultipliers[key as keyof typeof this.statMultipliers] = newMultiplier;
   }
 
   public getEffectiveUpgrades(): typeof this.effectiveUpgrades {
@@ -1585,15 +1620,39 @@ export class GameEngine {
     }
   }
 
-  // Prompt user for a stat value
-  private promptStatValue(key: string): void {
+  // Get the maximum value for a stat including milestone bonuses
+  private getMaxStatValue(key: string): number {
     const isPlayerStat = ['axePower', 'moveSpeed', 'chopSpeed', 'carryCapacity'].includes(key);
     const maxLevel = isPlayerStat
       ? this.state.upgrades[key as keyof typeof this.state.upgrades]
       : this.state.workerUpgrades[key as keyof typeof this.state.workerUpgrades];
 
-    const minValue = this.getStatValue(key, 1);
-    const maxValue = this.getStatValue(key, maxLevel);
+    const baseMax = this.getStatValue(key, maxLevel);
+
+    // For player stats, include milestone bonuses
+    if (isPlayerStat) {
+      const milestoneBonuses = this.calculateMilestoneBonuses();
+      if (key === 'moveSpeed') {
+        return baseMax * (1 + milestoneBonuses.speedPercent / 100);
+      } else if (key === 'axePower') {
+        return baseMax * (1 + milestoneBonuses.powerPercent / 100);
+      } else if (key === 'chopSpeed') {
+        return baseMax * (1 + milestoneBonuses.chopSpeedPercent / 100);
+      }
+    }
+    return baseMax;
+  }
+
+  // Get the current effective stat value (with multiplier applied)
+  public getEffectiveStatValue(key: string): number {
+    const maxValue = this.getMaxStatValue(key);
+    const multiplier = this.statMultipliers[key as keyof typeof this.statMultipliers] ?? 1;
+    return Math.max(1, maxValue * multiplier);
+  }
+
+  // Prompt user for a stat value - allows setting from 1 to max (including milestone bonuses)
+  private promptStatValue(key: string): void {
+    const maxValue = this.getMaxStatValue(key);
 
     // Format values for display
     const formatValue = (v: number) => {
@@ -1615,9 +1674,12 @@ export class GameEngine {
       workerPower: 'Worker Power',
     };
 
+    // Get current effective value
+    const currentValue = this.getEffectiveStatValue(key);
+
     const input = window.prompt(
-      `${statNames[key] || key}\nRange: ${formatValue(minValue)} to ${formatValue(maxValue)}\nEnter a value:`,
-      formatValue(maxValue)
+      `${statNames[key] || key}\nRange: 1 to ${formatValue(maxValue)}\nEnter a value:`,
+      formatValue(currentValue)
     );
 
     if (input === null) return; // Cancelled
@@ -1626,19 +1688,12 @@ export class GameEngine {
     let parsed = parseFloat(input.replace('%', ''));
     if (isNaN(parsed)) return;
 
-    // Clamp to valid range
-    parsed = Math.max(minValue, Math.min(maxValue, parsed));
+    // Clamp to valid range (minimum 1, max is the calculated max)
+    parsed = Math.max(1, Math.min(maxValue, parsed));
 
-    // Convert to level and clamp
-    let level = this.valueToLevel(key, parsed);
-    level = Math.max(1, Math.min(maxLevel, level));
-
-    // Apply to effective upgrades
-    if (isPlayerStat) {
-      this.effectiveUpgrades[key as keyof typeof this.effectiveUpgrades] = level;
-    } else {
-      this.effectiveWorkerUpgrades[key as keyof typeof this.effectiveWorkerUpgrades] = level;
-    }
+    // Calculate the multiplier needed to achieve this value
+    const multiplier = parsed / maxValue;
+    this.statMultipliers[key as keyof typeof this.statMultipliers] = Math.max(0.001, Math.min(1, multiplier));
   }
 
   // Add workers to escort squad
@@ -1859,8 +1914,28 @@ export class GameEngine {
     // Calculate milestone bonuses
     const milestoneBonuses = this.calculateMilestoneBonuses();
 
+    // Store old position to apply speed multiplier correctly
+    const oldX = this.state.player.position.x;
+    const oldY = this.state.player.position.y;
+
+    // Don't process movement while cheat menu, options menu, or keybinds menu is open
+    const inputBlocked = this.cheatMenuOpen || this.optionsMenuOpen || this.keybindsMenuOpen;
+    const inputState = inputBlocked ? { ...this.state.input, up: false, down: false, left: false, right: false } : this.state.input;
+
     // Update player position based on input (use effective upgrades for adjustable stats)
-    updatePlayer(this.state.player, this.state.input, deltaTime, this.config, this.effectiveUpgrades, milestoneBonuses);
+    updatePlayer(this.state.player, inputState, deltaTime, this.config, this.effectiveUpgrades, milestoneBonuses);
+
+    // Apply stat multiplier to movement (allows setting speed from 1 to max including milestones)
+    const speedMultiplier = this.statMultipliers.moveSpeed;
+    if (speedMultiplier < 1) {
+      // Calculate delta and scale it by the multiplier
+      const deltaX = this.state.player.position.x - oldX;
+      const deltaY = this.state.player.position.y - oldY;
+      this.state.player.position.x = oldX + deltaX * speedMultiplier;
+      this.state.player.position.y = oldY + deltaY * speedMultiplier;
+      this.state.player.velocity.x *= speedMultiplier;
+      this.state.player.velocity.y *= speedMultiplier;
+    }
 
     // Check tree collisions for player
     this.handleTreeCollisions(this.state.player.position, 6);
@@ -1969,9 +2044,17 @@ export class GameEngine {
     // Start chop animation (with milestone chop speed bonus, use effective upgrades)
     startChop(this.state.player, this.config, this.effectiveUpgrades, milestoneBonuses);
 
+    // Apply chop speed multiplier (higher multiplier = faster attacks = shorter cooldown)
+    // The multiplier scales the time, so we divide by it to get faster chops at multiplier=1
+    if (this.statMultipliers.chopSpeed < 1) {
+      this.state.player.chopTimer /= this.statMultipliers.chopSpeed;
+    }
+
     // Deal damage to tree (40% compound per level, base damage 1) plus milestone power bonus
     const baseDamage = Math.pow(1.4, this.effectiveUpgrades.axePower - 1);
-    const damage = baseDamage * (1 + milestoneBonuses.powerPercent / 100);
+    const damageWithBonus = baseDamage * (1 + milestoneBonuses.powerPercent / 100);
+    // Apply stat multiplier to allow setting damage from 1 to max
+    const damage = Math.max(0.1, damageWithBonus * this.statMultipliers.axePower);
     const wasDestroyed = damageTree(nearestTree, damage, this.config);
 
     // Spawn wood particles on hit
@@ -2091,8 +2174,9 @@ export class GameEngine {
       const dist = Math.sqrt(dx * dx + dy * dy);
 
       if (dist < this.config.woodPickupRange) {
-        // Check capacity (base 10, 50% compound per level) - use effective upgrade
-        const effectiveCapacity = Math.floor(10 * Math.pow(1.5, this.effectiveUpgrades.carryCapacity - 1));
+        // Check capacity (base 10, 50% compound per level) - use effective upgrade and multiplier
+        const baseCapacity = Math.floor(10 * Math.pow(1.5, this.effectiveUpgrades.carryCapacity - 1));
+        const effectiveCapacity = Math.max(1, Math.floor(baseCapacity * this.statMultipliers.carryCapacity));
         const canCarry = Math.min(drop.amount, effectiveCapacity - this.state.wood);
         if (canCarry > 0) {
           this.state.wood += canCarry;

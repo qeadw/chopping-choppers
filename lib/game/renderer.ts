@@ -1305,7 +1305,7 @@ function drawCheatMenu(
   // Subtitle
   ctx.fillStyle = '#888';
   ctx.font = '10px monospace';
-  ctx.fillText('Press ` to close', menuX + menuWidth / 2, menuY + 42);
+  ctx.fillText('Type "cheater" or click outside to close', menuX + menuWidth / 2, menuY + 42);
 
   // Cheat options
   ctx.textAlign = 'left';
