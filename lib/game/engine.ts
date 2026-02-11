@@ -1061,13 +1061,29 @@ export class GameEngine {
         this.keybinds = { ...this.keybinds, ...data.keybinds };
       }
 
-      // Restore effective upgrades
+      // Restore effective upgrades, or sync with actual upgrades if not saved
       if (data.effectiveUpgrades) {
         this.effectiveUpgrades = { ...this.effectiveUpgrades, ...data.effectiveUpgrades };
+      } else {
+        // No saved effective upgrades - sync with actual upgrades
+        this.effectiveUpgrades = { ...this.state.upgrades };
       }
       if (data.effectiveWorkerUpgrades) {
         this.effectiveWorkerUpgrades = { ...this.effectiveWorkerUpgrades, ...data.effectiveWorkerUpgrades };
+      } else {
+        // No saved effective worker upgrades - sync with actual upgrades
+        this.effectiveWorkerUpgrades = { ...this.state.workerUpgrades };
       }
+
+      // Ensure effective upgrades don't exceed actual upgrades (in case upgrades changed)
+      this.effectiveUpgrades.axePower = Math.min(this.effectiveUpgrades.axePower, this.state.upgrades.axePower);
+      this.effectiveUpgrades.moveSpeed = Math.min(this.effectiveUpgrades.moveSpeed, this.state.upgrades.moveSpeed);
+      this.effectiveUpgrades.chopSpeed = Math.min(this.effectiveUpgrades.chopSpeed, this.state.upgrades.chopSpeed);
+      this.effectiveUpgrades.carryCapacity = Math.min(this.effectiveUpgrades.carryCapacity, this.state.upgrades.carryCapacity);
+      this.effectiveWorkerUpgrades.restSpeed = Math.min(this.effectiveWorkerUpgrades.restSpeed, this.state.workerUpgrades.restSpeed);
+      this.effectiveWorkerUpgrades.workDuration = Math.min(this.effectiveWorkerUpgrades.workDuration, this.state.workerUpgrades.workDuration);
+      this.effectiveWorkerUpgrades.workerSpeed = Math.min(this.effectiveWorkerUpgrades.workerSpeed, this.state.workerUpgrades.workerSpeed);
+      this.effectiveWorkerUpgrades.workerPower = Math.min(this.effectiveWorkerUpgrades.workerPower, this.state.workerUpgrades.workerPower);
 
       console.log('Progress loaded!', {
         money: this.state.money,
@@ -2141,21 +2157,27 @@ export class GameEngine {
       switch (upgradeName) {
         case 'axePower':
           upgrades.axePower++;
+          this.effectiveUpgrades.axePower = upgrades.axePower; // Auto-sync effective
           break;
         case 'moveSpeed':
           upgrades.moveSpeed++;
+          this.effectiveUpgrades.moveSpeed = upgrades.moveSpeed;
           break;
         case 'chopSpeed':
           upgrades.chopSpeed++;
+          this.effectiveUpgrades.chopSpeed = upgrades.chopSpeed;
           break;
         case 'carryCapacity':
           upgrades.carryCapacity++;
+          this.effectiveUpgrades.carryCapacity = upgrades.carryCapacity;
           break;
         case 'restSpeed':
           workerUpgrades.restSpeed++;
+          this.effectiveWorkerUpgrades.restSpeed = workerUpgrades.restSpeed;
           break;
         case 'workDuration':
           workerUpgrades.workDuration++;
+          this.effectiveWorkerUpgrades.workDuration = workerUpgrades.workDuration;
           // Update all workers' max stamina (collectors have base 60, choppers have base 100)
           for (const worker of this.state.workers) {
             const baseStamina = worker.type === WorkerType.Collector ? 60 : 100;
@@ -2164,9 +2186,11 @@ export class GameEngine {
           break;
         case 'workerSpeed':
           workerUpgrades.workerSpeed++;
+          this.effectiveWorkerUpgrades.workerSpeed = workerUpgrades.workerSpeed;
           break;
         case 'workerPower':
           workerUpgrades.workerPower++;
+          this.effectiveWorkerUpgrades.workerPower = workerUpgrades.workerPower;
           break;
       }
 
