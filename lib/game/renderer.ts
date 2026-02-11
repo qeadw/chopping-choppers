@@ -27,7 +27,9 @@ export function render(
   treeChecklistOpen: boolean = false,
   squadMenuOpen: boolean = false,
   optionsMenuOpen: boolean = false,
-  optionsMenuState: OptionsMenuState | null = null
+  optionsMenuState: OptionsMenuState | null = null,
+  keybindsMenuOpen: boolean = false,
+  keybindsMenuState: KeybindsMenuState | null = null
 ): void {
   const { camera, player, chunks } = state;
   const baseScale = config.pixelScale;
@@ -169,6 +171,11 @@ export function render(
   // Draw options menu if open (ignores UI hidden state)
   if (optionsMenuOpen && optionsMenuState) {
     drawOptionsMenu(ctx, optionsMenuState);
+  }
+
+  // Draw keybinds menu if open (ignores UI hidden state)
+  if (keybindsMenuOpen && keybindsMenuState) {
+    drawKeybindsMenu(ctx, keybindsMenuState);
   }
 
   // Draw player waypoint off-screen indicator at all zoom levels
@@ -1471,14 +1478,8 @@ function drawOptionsMenu(
     { label: 'Work Duration', type: 'stat', key: 'workDuration', category: 'Worker' },
     { label: 'Worker Speed', type: 'stat', key: 'workerSpeed', category: 'Worker' },
     { label: 'Worker Power', type: 'stat', key: 'workerPower', category: 'Worker' },
-    // Keybinds
-    { label: 'Squad Menu', type: 'keybind', key: 'squadMenu', category: 'Keybinds' },
-    { label: 'Cheat Menu', type: 'keybind', key: 'cheatMenu', category: 'Keybinds' },
-    { label: 'Tree Checklist', type: 'keybind', key: 'treeChecklist', category: 'Keybinds' },
-    { label: 'Options Menu', type: 'keybind', key: 'optionsMenu', category: 'Keybinds' },
-    { label: 'Toggle UI', type: 'keybind', key: 'toggleUI', category: 'Keybinds' },
-    { label: 'Stump Timers', type: 'keybind', key: 'toggleStumpTimers', category: 'Keybinds' },
-    { label: 'Teleport Home', type: 'keybind', key: 'teleportHome', category: 'Keybinds' },
+    // Button to keybinds submenu
+    { label: 'Keybinds...', type: 'button', key: 'keybinds', category: 'Settings' },
   ];
 
   let y = menuY + 60;
@@ -1529,16 +1530,9 @@ function drawOptionsMenu(
       const leftArrow = canDecrease ? '< ' : '  ';
       const rightArrow = canIncrease ? ' >' : '  ';
       ctx.fillText(`${leftArrow}${current}/${max}${rightArrow}`, menuX + menuWidth - 20, y);
-    } else if (opt.type === 'keybind') {
-      const keyValue = menuState.keybinds[opt.key] || '?';
-      const isEditing = menuState.editingKeybind === opt.key;
-      if (isEditing) {
-        ctx.fillStyle = '#ff8';
-        ctx.fillText('Press any key...', menuX + menuWidth - 20, y);
-      } else {
-        ctx.fillStyle = isSelected ? '#88CCFF' : '#888';
-        ctx.fillText(`[${keyValue}]`, menuX + menuWidth - 20, y);
-      }
+    } else if (opt.type === 'button') {
+      ctx.fillStyle = isSelected ? '#88CCFF' : '#888';
+      ctx.fillText('>', menuX + menuWidth - 20, y);
     }
 
     y += 20;
@@ -1548,7 +1542,113 @@ function drawOptionsMenu(
   ctx.fillStyle = '#888';
   ctx.font = '10px monospace';
   ctx.textAlign = 'center';
-  ctx.fillText('Enter to edit keybind | Escape to close', menuX + menuWidth / 2, menuY + menuHeight - 15);
+  ctx.fillText('Enter to select | Escape to close & save', menuX + menuWidth / 2, menuY + menuHeight - 15);
+}
+
+export interface KeybindsMenuState {
+  selection: number;
+  editingKeybind: string | null;
+  keybinds: Record<string, string>;
+}
+
+// Keybind display names
+const KEYBIND_LABELS: Record<string, string> = {
+  moveUp: 'Move Up',
+  moveDown: 'Move Down',
+  moveLeft: 'Move Left',
+  moveRight: 'Move Right',
+  chop: 'Chop',
+  interact: 'Interact/Sell',
+  squadMenu: 'Squad Menu',
+  treeChecklist: 'Tree Checklist',
+  optionsMenu: 'Options Menu',
+  toggleUI: 'Toggle UI',
+  toggleStumpTimers: 'Stump Timers',
+  toggleChoppers: 'Toggle Choppers',
+  toggleCollectors: 'Toggle Collectors',
+  hireChopper: 'Hire Chopper',
+  hireCollector: 'Hire Collector',
+  placeChopperWaypoint: 'Chopper Waypoint',
+  placeCollectorWaypoint: 'Collector Waypoint',
+  placePlayerWaypoint: 'Player Waypoint',
+  placeWoodWaypoint: 'Wood Waypoint',
+  clearWaypoints: 'Clear Waypoints',
+  teleportHome: 'Teleport Home',
+};
+
+function drawKeybindsMenu(
+  ctx: CanvasRenderingContext2D,
+  menuState: KeybindsMenuState
+): void {
+  const menuWidth = 400;
+  const keybindNames = Object.keys(menuState.keybinds);
+  const menuHeight = Math.min(550, 80 + keybindNames.length * 22);
+  const menuX = (ctx.canvas.width - menuWidth) / 2;
+  const menuY = (ctx.canvas.height - menuHeight) / 2;
+
+  // Darken background
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+  // Menu background
+  ctx.fillStyle = 'rgba(40, 50, 60, 0.95)';
+  ctx.fillRect(menuX, menuY, menuWidth, menuHeight);
+
+  // Menu border
+  ctx.strokeStyle = '#88AAFF';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(menuX, menuY, menuWidth, menuHeight);
+
+  // Title
+  ctx.fillStyle = '#88AAFF';
+  ctx.font = 'bold 18px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('KEYBINDS', menuX + menuWidth / 2, menuY + 28);
+
+  // Subtitle
+  ctx.fillStyle = '#888';
+  ctx.font = '10px monospace';
+  ctx.fillText('Enter to change, Escape/Backspace to go back', menuX + menuWidth / 2, menuY + 42);
+
+  let y = menuY + 65;
+
+  for (let i = 0; i < keybindNames.length; i++) {
+    const key = keybindNames[i];
+    const isSelected = i === menuState.selection;
+    const isEditing = menuState.editingKeybind === key;
+
+    // Highlight selected row
+    if (isSelected) {
+      ctx.fillStyle = 'rgba(136, 170, 255, 0.3)';
+      ctx.fillRect(menuX + 10, y - 12, menuWidth - 20, 18);
+    }
+
+    // Draw label
+    ctx.fillStyle = isSelected ? '#fff' : '#ccc';
+    ctx.font = '12px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText(KEYBIND_LABELS[key] || key, menuX + 20, y);
+
+    // Draw current keybind value
+    ctx.textAlign = 'right';
+    if (isEditing) {
+      ctx.fillStyle = '#ff8';
+      ctx.fillText('Press any key...', menuX + menuWidth - 20, y);
+    } else {
+      const keyValue = menuState.keybinds[key] || '?';
+      const displayValue = keyValue === ' ' ? 'Space' : keyValue;
+      ctx.fillStyle = isSelected ? '#88CCFF' : '#888';
+      ctx.fillText(`[${displayValue}]`, menuX + menuWidth - 20, y);
+    }
+
+    y += 20;
+  }
+
+  // Footer
+  ctx.fillStyle = '#888';
+  ctx.font = '10px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Settings auto-save when you exit', menuX + menuWidth / 2, menuY + menuHeight - 12);
 }
 
 function drawTreeChecklist(

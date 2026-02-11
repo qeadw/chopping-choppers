@@ -122,6 +122,11 @@ interface SaveData {
   treeChoppedCounts?: { type: number; count: number }[];
   // No-respawn chunks
   noRespawnChunks?: string[];
+  // Keybinds
+  keybinds?: Record<string, string>;
+  // Effective upgrades (stats that can be lowered)
+  effectiveUpgrades?: { axePower: number; moveSpeed: number; chopSpeed: number; carryCapacity: number };
+  effectiveWorkerUpgrades?: { restSpeed: number; workDuration: number; workerSpeed: number; workerPower: number };
 }
 
 export class GameEngine {
@@ -172,16 +177,40 @@ export class GameEngine {
     workerPower: 1,
   };
 
-  // Customizable keybinds
-  private keybinds = {
+  // Customizable keybinds (all game keybinds)
+  private keybinds: Record<string, string> = {
+    // Movement
+    moveUp: 'w',
+    moveDown: 's',
+    moveLeft: 'a',
+    moveRight: 'd',
+    // Actions
+    chop: ' ',
+    interact: 'e',
+    // Menus
     squadMenu: 'q',
-    cheatMenu: '`',
     treeChecklist: 'l',
     optionsMenu: 'o',
     toggleUI: 'F2',
+    // Toggles
     toggleStumpTimers: 't',
+    toggleChoppers: 'c',
+    toggleCollectors: 'v',
+    // Workers
+    hireChopper: 'j',
+    hireCollector: 'k',
+    // Waypoints (zoomed out)
+    placeChopperWaypoint: 'q',
+    placeCollectorWaypoint: 'r',
+    placePlayerWaypoint: 'f',
+    placeWoodWaypoint: 'y',
+    clearWaypoints: 'x',
+    // Other
     teleportHome: 'Home',
   };
+  private keybindsMenuOpen: boolean = false;
+  private keybindsMenuSelection: number = 0;
+  private cheatBuffer: string = ''; // Buffer for detecting "cheater" typed
 
   // Generate a unique world seed using crypto API for better randomness
   private generateWorldSeed(): number {
@@ -292,11 +321,9 @@ export class GameEngine {
     };
     window.addEventListener('keydown', this.upgradeKeyHandler);
 
-    // Setup hire worker key handler (J = Chopper, K = Collector, T = Toggle timers)
-    // C = Toggle choppers, V = Toggle collectors
-    // When zoomed out: Q = Place chopper waypoint, R = Place collector waypoint, X = Clear waypoints
+    // Setup hire worker key handler - uses keybinds object for customization
     this.hireKeyHandler = (e: KeyboardEvent) => {
-      // Save code detection
+      // Save code detection ("save")
       if (e.key.length === 1) {
         this.saveBuffer = (this.saveBuffer + e.key).slice(-4);
         if (this.saveBuffer.toLowerCase() === 'save') {
@@ -306,26 +333,41 @@ export class GameEngine {
           }
           return;
         }
+        // Cheat menu detection ("cheater")
+        this.cheatBuffer = (this.cheatBuffer + e.key).slice(-7);
+        if (this.cheatBuffer.toLowerCase() === 'cheater') {
+          this.cheatBuffer = '';
+          this.toggleCheatMenu();
+          return;
+        }
       }
 
       const key = e.key.toLowerCase();
-      if (key === 'j') {
+      const keyRaw = e.key; // For special keys like F2
+
+      // Helper to check keybind match
+      const matchKey = (bindName: string) => {
+        const bind = this.keybinds[bindName]?.toLowerCase();
+        return bind === key || bind === keyRaw;
+      };
+
+      if (matchKey('hireChopper')) {
         this.hireWorker(WorkerType.Chopper);
-      } else if (key === 'k') {
+      } else if (matchKey('hireCollector')) {
         this.hireWorker(WorkerType.Collector);
-      } else if (key === 't') {
+      } else if (matchKey('toggleStumpTimers')) {
         this.state.showStumpTimers = !this.state.showStumpTimers;
-      } else if (key === 'c') {
+      } else if (matchKey('toggleChoppers')) {
         // Toggle choppers
         this.state.choppersEnabled = !this.state.choppersEnabled;
         const status = this.state.choppersEnabled ? 'ENABLED' : 'DISABLED';
         this.addFloatingText(this.state.player.position.x, this.state.player.position.y - 30, `Choppers ${status}`, this.state.choppersEnabled ? '#00FF00' : '#FF4444');
-      } else if (key === 'v') {
+      } else if (matchKey('toggleCollectors')) {
         // Toggle collectors
         this.state.collectorsEnabled = !this.state.collectorsEnabled;
         const status = this.state.collectorsEnabled ? 'ENABLED' : 'DISABLED';
         this.addFloatingText(this.state.player.position.x, this.state.player.position.y - 30, `Collectors ${status}`, this.state.collectorsEnabled ? '#00FF00' : '#FF4444');
-      } else if (key === 'q' && this.state.camera.zoom <= 0.15) {
+      } else if (matchKey('placeChopperWaypoint') && this.state.camera.zoom <= 0.15) {
         // Toggle chopper waypoint placement mode
         if (this.waypointPlacementMode === WaypointType.Chopper) {
           this.waypointPlacementMode = null;
@@ -333,7 +375,7 @@ export class GameEngine {
           this.waypointPlacementMode = WaypointType.Chopper;
           this.addFloatingText(this.state.player.position.x, this.state.player.position.y - 30, 'Click to place CHOPPER waypoint', '#5A9C5A');
         }
-      } else if (key === 'r' && this.state.camera.zoom <= 0.15) {
+      } else if (matchKey('placeCollectorWaypoint') && this.state.camera.zoom <= 0.15) {
         // Toggle collector waypoint placement mode
         if (this.waypointPlacementMode === WaypointType.Collector) {
           this.waypointPlacementMode = null;
@@ -341,7 +383,7 @@ export class GameEngine {
           this.waypointPlacementMode = WaypointType.Collector;
           this.addFloatingText(this.state.player.position.x, this.state.player.position.y - 30, 'Click to place COLLECTOR waypoint', '#88AAFF');
         }
-      } else if (key === 'f' && this.state.camera.zoom <= 0.15) {
+      } else if (matchKey('placePlayerWaypoint') && this.state.camera.zoom <= 0.15) {
         // Toggle player waypoint placement mode
         if (this.waypointPlacementMode === WaypointType.Player) {
           this.waypointPlacementMode = null;
@@ -349,35 +391,55 @@ export class GameEngine {
           this.waypointPlacementMode = WaypointType.Player;
           this.addFloatingText(this.state.player.position.x, this.state.player.position.y - 30, 'Click to place PLAYER waypoint', '#FFD700');
         }
-      } else if (key === 'y' && this.state.camera.zoom <= 0.15) {
-        // Toggle collector wood waypoint placement mode (alternative for wood collection)
+      } else if (matchKey('placeWoodWaypoint') && this.state.camera.zoom <= 0.15) {
+        // Toggle collector wood waypoint placement mode
         if (this.waypointPlacementMode === WaypointType.CollectorWood) {
           this.waypointPlacementMode = null;
         } else {
           this.waypointPlacementMode = WaypointType.CollectorWood;
           this.addFloatingText(this.state.player.position.x, this.state.player.position.y - 30, 'Click to place WOOD COLLECT waypoint', '#FFAA44');
         }
-      } else if (key === 'x' && this.state.camera.zoom <= 0.15) {
+      } else if (matchKey('clearWaypoints') && this.state.camera.zoom <= 0.15) {
         // Clear all waypoints
         this.state.waypoints = [];
         this.state.playerWaypoint = null;
         this.addFloatingText(this.state.player.position.x, this.state.player.position.y - 30, 'Waypoints cleared', '#AAAAAA');
-      } else if (key === '`' || key === '~') {
-        // Toggle cheat menu
-        this.toggleCheatMenu();
-      } else if (key === 'l') {
+      } else if (matchKey('treeChecklist')) {
         // Toggle tree checklist
         this.toggleTreeChecklist();
-      } else if (key === this.keybinds.squadMenu) {
-        // Toggle squad menu
+      } else if (matchKey('squadMenu') && this.state.camera.zoom > 0.15) {
+        // Toggle squad menu (only when not zoomed out, since Q is also waypoint)
         this.toggleSquadMenu();
-      } else if (key === this.keybinds.optionsMenu) {
+      } else if (matchKey('optionsMenu')) {
         // Toggle options menu
         this.toggleOptionsMenu();
-      } else if (e.key === 'F2') {
+      } else if (matchKey('toggleUI')) {
         // Toggle UI visibility
         e.preventDefault();
         this.state.uiHidden = !this.state.uiHidden;
+      } else if (this.keybindsMenuOpen) {
+        // Keybinds menu navigation
+        if (key === 'arrowup' || key === 'w') {
+          this.keybindsMenuSelection = Math.max(0, this.keybindsMenuSelection - 1);
+        } else if (key === 'arrowdown' || key === 's') {
+          const keybindNames = Object.keys(this.keybinds);
+          this.keybindsMenuSelection = Math.min(keybindNames.length - 1, this.keybindsMenuSelection + 1);
+        } else if (key === 'enter' || key === ' ') {
+          // Start editing selected keybind
+          const keybindNames = Object.keys(this.keybinds);
+          this.editingKeybind = keybindNames[this.keybindsMenuSelection];
+        } else if (key === 'escape' || key === 'backspace') {
+          // Go back to options menu
+          this.keybindsMenuOpen = false;
+          this.optionsMenuOpen = true;
+        } else if (this.editingKeybind) {
+          // Capture new keybind
+          e.preventDefault();
+          if (key !== 'escape') {
+            this.keybinds[this.editingKeybind] = e.key === ' ' ? 'Space' : e.key;
+          }
+          this.editingKeybind = null;
+        }
       } else if (this.cheatMenuOpen) {
         // Cheat menu actions
         if (key === 'm') {
@@ -479,32 +541,26 @@ export class GameEngine {
         }
       } else if (this.optionsMenuOpen) {
         // Options menu actions
-        if (this.editingKeybind) {
-          // Capture new keybind
-          e.preventDefault();
-          if (key !== 'escape') {
-            (this.keybinds as Record<string, string>)[this.editingKeybind] = e.key === ' ' ? 'Space' : e.key;
-          }
-          this.editingKeybind = null;
-        } else {
-          const options = this.getOptionsMenuOptions();
-          if (key === 'arrowup' || key === 'w') {
-            this.optionsMenuSelection = Math.max(0, this.optionsMenuSelection - 1);
-          } else if (key === 'arrowdown' || key === 's') {
-            this.optionsMenuSelection = Math.min(options.length - 1, this.optionsMenuSelection + 1);
-          } else if (key === 'arrowleft' || key === 'a') {
-            this.adjustOptionValue(-1);
-          } else if (key === 'arrowright' || key === 'd') {
-            this.adjustOptionValue(1);
-          } else if (key === 'enter' || key === ' ') {
-            // For keybind options, start editing
-            const opt = options[this.optionsMenuSelection];
-            if (opt && opt.type === 'keybind') {
-              this.editingKeybind = opt.key;
-            }
-          } else if (key === 'escape' || key === this.keybinds.optionsMenu) {
+        const options = this.getOptionsMenuOptions();
+        if (key === 'arrowup' || key === 'w') {
+          this.optionsMenuSelection = Math.max(0, this.optionsMenuSelection - 1);
+        } else if (key === 'arrowdown' || key === 's') {
+          this.optionsMenuSelection = Math.min(options.length - 1, this.optionsMenuSelection + 1);
+        } else if (key === 'arrowleft' || key === 'a') {
+          this.adjustOptionValue(-1);
+        } else if (key === 'arrowright' || key === 'd') {
+          this.adjustOptionValue(1);
+        } else if (key === 'enter' || key === ' ') {
+          // Check if Keybinds button is selected
+          const opt = options[this.optionsMenuSelection];
+          if (opt && opt.type === 'button' && opt.key === 'keybinds') {
             this.optionsMenuOpen = false;
+            this.keybindsMenuOpen = true;
+            this.keybindsMenuSelection = 0;
           }
+        } else if (key === 'escape' || matchKey('optionsMenu')) {
+          this.optionsMenuOpen = false;
+          this.saveProgress(); // Save when closing options
         }
       }
     };
@@ -790,6 +846,11 @@ export class GameEngine {
         treeChoppedCounts: Array.from(this.state.treeChoppedCounts.entries()).map(([type, count]) => ({ type, count })),
         // No-respawn chunks
         noRespawnChunks: Array.from(this.state.noRespawnChunks),
+        // Keybinds
+        keybinds: this.keybinds,
+        // Effective upgrades
+        effectiveUpgrades: this.effectiveUpgrades,
+        effectiveWorkerUpgrades: this.effectiveWorkerUpgrades,
       };
       localStorage.setItem(SAVE_KEY, obfuscateSave(JSON.stringify(saveData)));
     } catch (e) {
@@ -993,6 +1054,19 @@ export class GameEngine {
       // Restore no-respawn chunks
       if (data.noRespawnChunks && data.noRespawnChunks.length > 0) {
         this.state.noRespawnChunks = new Set(data.noRespawnChunks);
+      }
+
+      // Restore keybinds
+      if (data.keybinds) {
+        this.keybinds = { ...this.keybinds, ...data.keybinds };
+      }
+
+      // Restore effective upgrades
+      if (data.effectiveUpgrades) {
+        this.effectiveUpgrades = { ...this.effectiveUpgrades, ...data.effectiveUpgrades };
+      }
+      if (data.effectiveWorkerUpgrades) {
+        this.effectiveWorkerUpgrades = { ...this.effectiveWorkerUpgrades, ...data.effectiveWorkerUpgrades };
       }
 
       console.log('Progress loaded!', {
@@ -1350,7 +1424,7 @@ export class GameEngine {
     };
   }
 
-  private getOptionsMenuOptions(): Array<{ label: string; type: 'stat' | 'keybind'; key: string; category: string }> {
+  private getOptionsMenuOptions(): Array<{ label: string; type: 'stat' | 'button'; key: string; category: string }> {
     return [
       // Player stats
       { label: 'Axe Power', type: 'stat', key: 'axePower', category: 'Player' },
@@ -1362,15 +1436,21 @@ export class GameEngine {
       { label: 'Work Duration', type: 'stat', key: 'workDuration', category: 'Worker' },
       { label: 'Worker Speed', type: 'stat', key: 'workerSpeed', category: 'Worker' },
       { label: 'Worker Power', type: 'stat', key: 'workerPower', category: 'Worker' },
-      // Keybinds
-      { label: 'Squad Menu', type: 'keybind', key: 'squadMenu', category: 'Keybinds' },
-      { label: 'Cheat Menu', type: 'keybind', key: 'cheatMenu', category: 'Keybinds' },
-      { label: 'Tree Checklist', type: 'keybind', key: 'treeChecklist', category: 'Keybinds' },
-      { label: 'Options Menu', type: 'keybind', key: 'optionsMenu', category: 'Keybinds' },
-      { label: 'Toggle UI', type: 'keybind', key: 'toggleUI', category: 'Keybinds' },
-      { label: 'Stump Timers', type: 'keybind', key: 'toggleStumpTimers', category: 'Keybinds' },
-      { label: 'Teleport Home', type: 'keybind', key: 'teleportHome', category: 'Keybinds' },
+      // Button to open keybinds submenu
+      { label: 'Keybinds...', type: 'button', key: 'keybinds', category: 'Settings' },
     ];
+  }
+
+  public isKeybindsMenuOpen(): boolean {
+    return this.keybindsMenuOpen;
+  }
+
+  public getKeybindsMenuState(): { selection: number; editingKeybind: string | null; keybinds: Record<string, string> } {
+    return {
+      selection: this.keybindsMenuSelection,
+      editingKeybind: this.editingKeybind,
+      keybinds: this.keybinds,
+    };
   }
 
   private adjustOptionValue(delta: number): void {
@@ -3510,6 +3590,21 @@ export class GameEngine {
   }
 
   private render(): void {
-    render(this.ctx, this.state, this.sprites, this.config, this.catchUpTimeRemaining, this.waypointPlacementMode, this.regenCooldown, this.cheatMenuOpen, this.treeChecklistOpen, this.squadMenuOpen, this.optionsMenuOpen, this.optionsMenuOpen ? this.getOptionsMenuState() : null);
+    render(
+      this.ctx,
+      this.state,
+      this.sprites,
+      this.config,
+      this.catchUpTimeRemaining,
+      this.waypointPlacementMode,
+      this.regenCooldown,
+      this.cheatMenuOpen,
+      this.treeChecklistOpen,
+      this.squadMenuOpen,
+      this.optionsMenuOpen,
+      this.optionsMenuOpen ? this.getOptionsMenuState() : null,
+      this.keybindsMenuOpen,
+      this.keybindsMenuOpen ? this.getKeybindsMenuState() : null
+    );
   }
 }
