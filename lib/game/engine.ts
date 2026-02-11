@@ -153,7 +153,35 @@ export class GameEngine {
   private cheatMenuOpen: boolean = false; // Whether cheat menu is visible
   private treeChecklistOpen: boolean = false; // Whether tree checklist is visible
   private squadMenuOpen: boolean = false; // Whether squad menu is visible
+  private optionsMenuOpen: boolean = false; // Whether options menu is visible
+  private optionsMenuSelection: number = 0; // Currently selected option in options menu
+  private editingKeybind: string | null = null; // Which keybind is being edited (null = none)
   private platinumChunkRegenTimers: Map<string, number> = new Map(); // Timers for platinum chunk tree regeneration
+
+  // Effective upgrade levels (can be lowered for testing/preference)
+  private effectiveUpgrades = {
+    axePower: 1,
+    moveSpeed: 1,
+    chopSpeed: 1,
+    carryCapacity: 1,
+  };
+  private effectiveWorkerUpgrades = {
+    restSpeed: 1,
+    workDuration: 1,
+    workerSpeed: 1,
+    workerPower: 1,
+  };
+
+  // Customizable keybinds
+  private keybinds = {
+    squadMenu: 'q',
+    cheatMenu: '`',
+    treeChecklist: 'l',
+    optionsMenu: 'o',
+    toggleUI: 'F2',
+    toggleStumpTimers: 't',
+    teleportHome: 'Home',
+  };
 
   // Generate a unique world seed using crypto API for better randomness
   private generateWorldSeed(): number {
@@ -340,9 +368,12 @@ export class GameEngine {
       } else if (key === 'l') {
         // Toggle tree checklist
         this.toggleTreeChecklist();
-      } else if (key === 'h') {
+      } else if (key === this.keybinds.squadMenu) {
         // Toggle squad menu
         this.toggleSquadMenu();
+      } else if (key === this.keybinds.optionsMenu) {
+        // Toggle options menu
+        this.toggleOptionsMenu();
       } else if (e.key === 'F2') {
         // Toggle UI visibility
         e.preventDefault();
@@ -445,6 +476,35 @@ export class GameEngine {
         } else if (key === '@') {
           // Add all collectors to escort (shift+2)
           this.addToEscort(WorkerType.Collector, 999);
+        }
+      } else if (this.optionsMenuOpen) {
+        // Options menu actions
+        if (this.editingKeybind) {
+          // Capture new keybind
+          e.preventDefault();
+          if (key !== 'escape') {
+            (this.keybinds as Record<string, string>)[this.editingKeybind] = e.key === ' ' ? 'Space' : e.key;
+          }
+          this.editingKeybind = null;
+        } else {
+          const options = this.getOptionsMenuOptions();
+          if (key === 'arrowup' || key === 'w') {
+            this.optionsMenuSelection = Math.max(0, this.optionsMenuSelection - 1);
+          } else if (key === 'arrowdown' || key === 's') {
+            this.optionsMenuSelection = Math.min(options.length - 1, this.optionsMenuSelection + 1);
+          } else if (key === 'arrowleft' || key === 'a') {
+            this.adjustOptionValue(-1);
+          } else if (key === 'arrowright' || key === 'd') {
+            this.adjustOptionValue(1);
+          } else if (key === 'enter' || key === ' ') {
+            // For keybind options, start editing
+            const opt = options[this.optionsMenuSelection];
+            if (opt && opt.type === 'keybind') {
+              this.editingKeybind = opt.key;
+            }
+          } else if (key === 'escape' || key === this.keybinds.optionsMenu) {
+            this.optionsMenuOpen = false;
+          }
         }
       }
     };
@@ -1252,6 +1312,96 @@ export class GameEngine {
     return this.squadMenuOpen;
   }
 
+  public toggleOptionsMenu(): void {
+    this.optionsMenuOpen = !this.optionsMenuOpen;
+    if (this.optionsMenuOpen) {
+      this.cheatMenuOpen = false;
+      this.treeChecklistOpen = false;
+      this.squadMenuOpen = false;
+      this.optionsMenuSelection = 0;
+      this.editingKeybind = null;
+      // Sync effective upgrades with actual upgrades on open
+      this.effectiveUpgrades = { ...this.state.upgrades };
+      this.effectiveWorkerUpgrades = { ...this.state.workerUpgrades };
+    }
+  }
+
+  public isOptionsMenuOpen(): boolean {
+    return this.optionsMenuOpen;
+  }
+
+  public getOptionsMenuState(): {
+    selection: number;
+    editingKeybind: string | null;
+    keybinds: Record<string, string>;
+    effectiveUpgrades: { axePower: number; moveSpeed: number; chopSpeed: number; carryCapacity: number };
+    effectiveWorkerUpgrades: { restSpeed: number; workDuration: number; workerSpeed: number; workerPower: number };
+    maxUpgrades: { axePower: number; moveSpeed: number; chopSpeed: number; carryCapacity: number };
+    maxWorkerUpgrades: { restSpeed: number; workDuration: number; workerSpeed: number; workerPower: number };
+  } {
+    return {
+      selection: this.optionsMenuSelection,
+      editingKeybind: this.editingKeybind,
+      keybinds: this.keybinds,
+      effectiveUpgrades: this.effectiveUpgrades,
+      effectiveWorkerUpgrades: this.effectiveWorkerUpgrades,
+      maxUpgrades: this.state.upgrades,
+      maxWorkerUpgrades: this.state.workerUpgrades,
+    };
+  }
+
+  private getOptionsMenuOptions(): Array<{ label: string; type: 'stat' | 'keybind'; key: string; category: string }> {
+    return [
+      // Player stats
+      { label: 'Axe Power', type: 'stat', key: 'axePower', category: 'Player' },
+      { label: 'Move Speed', type: 'stat', key: 'moveSpeed', category: 'Player' },
+      { label: 'Chop Speed', type: 'stat', key: 'chopSpeed', category: 'Player' },
+      { label: 'Carry Capacity', type: 'stat', key: 'carryCapacity', category: 'Player' },
+      // Worker stats
+      { label: 'Rest Speed', type: 'stat', key: 'restSpeed', category: 'Worker' },
+      { label: 'Work Duration', type: 'stat', key: 'workDuration', category: 'Worker' },
+      { label: 'Worker Speed', type: 'stat', key: 'workerSpeed', category: 'Worker' },
+      { label: 'Worker Power', type: 'stat', key: 'workerPower', category: 'Worker' },
+      // Keybinds
+      { label: 'Squad Menu', type: 'keybind', key: 'squadMenu', category: 'Keybinds' },
+      { label: 'Cheat Menu', type: 'keybind', key: 'cheatMenu', category: 'Keybinds' },
+      { label: 'Tree Checklist', type: 'keybind', key: 'treeChecklist', category: 'Keybinds' },
+      { label: 'Options Menu', type: 'keybind', key: 'optionsMenu', category: 'Keybinds' },
+      { label: 'Toggle UI', type: 'keybind', key: 'toggleUI', category: 'Keybinds' },
+      { label: 'Stump Timers', type: 'keybind', key: 'toggleStumpTimers', category: 'Keybinds' },
+      { label: 'Teleport Home', type: 'keybind', key: 'teleportHome', category: 'Keybinds' },
+    ];
+  }
+
+  private adjustOptionValue(delta: number): void {
+    const options = this.getOptionsMenuOptions();
+    const opt = options[this.optionsMenuSelection];
+    if (!opt || opt.type !== 'stat') return;
+
+    const key = opt.key;
+    const isPlayerStat = ['axePower', 'moveSpeed', 'chopSpeed', 'carryCapacity'].includes(key);
+
+    if (isPlayerStat) {
+      const maxVal = this.state.upgrades[key as keyof typeof this.state.upgrades];
+      const current = this.effectiveUpgrades[key as keyof typeof this.effectiveUpgrades];
+      const newVal = Math.max(1, Math.min(maxVal, current + delta));
+      this.effectiveUpgrades[key as keyof typeof this.effectiveUpgrades] = newVal;
+    } else {
+      const maxVal = this.state.workerUpgrades[key as keyof typeof this.state.workerUpgrades];
+      const current = this.effectiveWorkerUpgrades[key as keyof typeof this.effectiveWorkerUpgrades];
+      const newVal = Math.max(1, Math.min(maxVal, current + delta));
+      this.effectiveWorkerUpgrades[key as keyof typeof this.effectiveWorkerUpgrades] = newVal;
+    }
+  }
+
+  public getEffectiveUpgrades(): typeof this.effectiveUpgrades {
+    return this.effectiveUpgrades;
+  }
+
+  public getEffectiveWorkerUpgrades(): typeof this.effectiveWorkerUpgrades {
+    return this.effectiveWorkerUpgrades;
+  }
+
   // Add workers to escort squad
   public addToEscort(type: WorkerType, count: number): number {
     const availableWorkers = this.state.workers.filter(
@@ -1470,8 +1620,8 @@ export class GameEngine {
     // Calculate milestone bonuses
     const milestoneBonuses = this.calculateMilestoneBonuses();
 
-    // Update player position based on input
-    updatePlayer(this.state.player, this.state.input, deltaTime, this.config, this.state.upgrades, milestoneBonuses);
+    // Update player position based on input (use effective upgrades for adjustable stats)
+    updatePlayer(this.state.player, this.state.input, deltaTime, this.config, this.effectiveUpgrades, milestoneBonuses);
 
     // Check tree collisions for player
     this.handleTreeCollisions(this.state.player.position, 6);
@@ -1532,8 +1682,8 @@ export class GameEngine {
     }
 
     // Handle chopping
-    // After chop speed level 5, allow holding to auto-swing
-    const autoChopEnabled = this.state.upgrades.chopSpeed >= 5;
+    // After chop speed level 5, allow holding to auto-swing (use effective upgrade)
+    const autoChopEnabled = this.effectiveUpgrades.chopSpeed >= 5;
     if (this.state.input.chop && (autoChopEnabled || !this.pendingChop)) {
       if (!autoChopEnabled) {
         this.pendingChop = true;
@@ -1577,11 +1727,11 @@ export class GameEngine {
     // Calculate milestone bonuses for chop speed and power
     const milestoneBonuses = this.calculateMilestoneBonuses();
 
-    // Start chop animation (with milestone chop speed bonus)
-    startChop(this.state.player, this.config, this.state.upgrades, milestoneBonuses);
+    // Start chop animation (with milestone chop speed bonus, use effective upgrades)
+    startChop(this.state.player, this.config, this.effectiveUpgrades, milestoneBonuses);
 
     // Deal damage to tree (40% compound per level, base damage 1) plus milestone power bonus
-    const baseDamage = Math.pow(1.4, this.state.upgrades.axePower - 1);
+    const baseDamage = Math.pow(1.4, this.effectiveUpgrades.axePower - 1);
     const damage = baseDamage * (1 + milestoneBonuses.powerPercent / 100);
     const wasDestroyed = damageTree(nearestTree, damage, this.config);
 
@@ -1702,8 +1852,8 @@ export class GameEngine {
       const dist = Math.sqrt(dx * dx + dy * dy);
 
       if (dist < this.config.woodPickupRange) {
-        // Check capacity (base 10, 50% compound per level)
-        const effectiveCapacity = Math.floor(10 * Math.pow(1.5, upgrades.carryCapacity - 1));
+        // Check capacity (base 10, 50% compound per level) - use effective upgrade
+        const effectiveCapacity = Math.floor(10 * Math.pow(1.5, this.effectiveUpgrades.carryCapacity - 1));
         const canCarry = Math.min(drop.amount, effectiveCapacity - this.state.wood);
         if (canCarry > 0) {
           this.state.wood += canCarry;
@@ -2135,12 +2285,12 @@ export class GameEngine {
         worker.chopTimer -= deltaTime;
       }
 
-      // Calculate effective speed with upgrades (20% per level) and apple buff
+      // Calculate effective speed with upgrades (20% per level) and apple buff - use effective worker upgrades
       const appleSpeedMult = this.state.appleBuff.active ? this.state.appleBuff.speedMultiplier : 1;
-      const effectiveSpeed = worker.speed * Math.pow(1.2, workerUpgrades.workerSpeed - 1) * appleSpeedMult;
+      const effectiveSpeed = worker.speed * Math.pow(1.2, this.effectiveWorkerUpgrades.workerSpeed - 1) * appleSpeedMult;
 
-      // Calculate effective power level for 20% multipliers and apple damage buff
-      const effectivePower = workerUpgrades.workerPower;
+      // Calculate effective power level for 20% multipliers and apple damage buff - use effective worker upgrades
+      const effectivePower = this.effectiveWorkerUpgrades.workerPower;
       const appleDamageMult = this.state.appleBuff.active ? this.state.appleBuff.damageMultiplier : 1;
 
       const isChopper = worker.type === WorkerType.Chopper;
@@ -2393,9 +2543,9 @@ export class GameEngine {
 
           // Chop the tree
           if (worker.chopTimer <= 0) {
-            // Worker chop cooldown - 5% faster per Work Duration level (compounding)
+            // Worker chop cooldown - 5% faster per Work Duration level (compounding) - use effective upgrade
             // Apple buff also gives 5x attack speed
-            const baseChopCooldown = 0.6 * Math.pow(0.95, this.state.workerUpgrades.workDuration - 1);
+            const baseChopCooldown = 0.6 * Math.pow(0.95, this.effectiveWorkerUpgrades.workDuration - 1);
             worker.chopTimer = baseChopCooldown / appleSpeedMult;
             const chopDamage = worker.chopPower * Math.pow(1.2, effectivePower - 1) * appleDamageMult;  // 1.2x damage per level, apple buff
             const wasDestroyed = damageTree(worker.targetTree, chopDamage, this.config);
@@ -2502,9 +2652,9 @@ export class GameEngine {
             break;
           }
 
-          // Pick up wood in batches - base 5/tick, 50% faster per worker speed upgrade
+          // Pick up wood in batches - base 5/tick, 50% faster per worker speed upgrade - use effective upgrades
           // Pickup speed scaled 0.25x (4x slower base interval)
-          const collectRate = Math.pow(1.5, workerUpgrades.workerSpeed - 1); // batches per second
+          const collectRate = Math.pow(1.5, this.effectiveWorkerUpgrades.workerSpeed - 1); // batches per second
           const collectInterval = 1.2 / collectRate; // 1.2s base interval (0.25x of original 0.3s)
 
           if (worker.chopTimer <= 0) {
@@ -2608,8 +2758,8 @@ export class GameEngine {
           worker.velocity.x = 0;
           worker.velocity.y = 0;
 
-          // Recover stamina (20% faster per upgrade level)
-          const restMultiplier = Math.pow(1.2, workerUpgrades.restSpeed - 1);
+          // Recover stamina (20% faster per upgrade level) - use effective upgrades
+          const restMultiplier = Math.pow(1.2, this.effectiveWorkerUpgrades.restSpeed - 1);
           const restRate = 20 * restMultiplier; // Stamina per second
           worker.stamina += restRate * deltaTime;
           worker.restTimer -= deltaTime * restMultiplier;
@@ -3360,6 +3510,6 @@ export class GameEngine {
   }
 
   private render(): void {
-    render(this.ctx, this.state, this.sprites, this.config, this.catchUpTimeRemaining, this.waypointPlacementMode, this.regenCooldown, this.cheatMenuOpen, this.treeChecklistOpen, this.squadMenuOpen);
+    render(this.ctx, this.state, this.sprites, this.config, this.catchUpTimeRemaining, this.waypointPlacementMode, this.regenCooldown, this.cheatMenuOpen, this.treeChecklistOpen, this.squadMenuOpen, this.optionsMenuOpen, this.optionsMenuOpen ? this.getOptionsMenuState() : null);
   }
 }

@@ -132,18 +132,18 @@ export function generateChunk(chunkX: number, chunkY: number, config: GameConfig
       type = TreeType.GiantRedwood;     // 0.39%
     } else if (typeRoll < 0.998046875) {
       type = TreeType.AncientOak;       // 0.2%
-    } else if (typeRoll < 0.999 + rareBoost) {
+    } else if (typeRoll < 0.999 + rareBoost * 0.5) {
       type = TreeType.MagicTree;        // 0.1% + bonus
-    } else if (typeRoll < 0.9991 + rareBoost * 0.8 && chunkDistFromSpawn > 1) {
-      type = TreeType.CrystalTree;      // 0.01% + bonus - not within 1 chunk of spawn
-    } else if (typeRoll < 0.99911 + rareBoost * 0.6 && chunkDistFromSpawn > 2) {
-      type = TreeType.VoidTree;         // 0.001% + bonus - not within 2 chunks of spawn
-    } else if (typeRoll < 0.999111 + rareBoost * 0.4 && chunkDistFromSpawn > 3) {
-      type = TreeType.CosmicTree;       // 0.0001% + bonus - not within 3 chunks of spawn
-    } else if (typeRoll < 0.9991111 + rareBoost * 0.2 && chunkDistFromSpawn > 4) {
-      type = TreeType.DivineTree;       // 0.00001% + bonus - not within 4 chunks of spawn
-    } else if (typeRoll >= 0.9991111 && chunkDistFromSpawn > 5) {
-      type = TreeType.WorldTree;        // 0.000001% + bonus - not within 5 chunks of spawn - LEGENDARY!
+    } else if (typeRoll < 0.9999 + rareBoost * 0.3 && chunkDistFromSpawn > 3) {
+      type = TreeType.CrystalTree;      // 0.01% - not within 3 chunks of spawn
+    } else if (typeRoll < 0.99999 + rareBoost * 0.15 && chunkDistFromSpawn > 5) {
+      type = TreeType.VoidTree;         // 0.001% - not within 5 chunks of spawn
+    } else if (typeRoll < 0.999999 + rareBoost * 0.04 && chunkDistFromSpawn > 10) {
+      type = TreeType.CosmicTree;       // 0.0001% - not within 10 chunks of spawn
+    } else if (typeRoll < 0.9999999 + rareBoost * 0.01 && chunkDistFromSpawn > 25) {
+      type = TreeType.DivineTree;       // 0.00001% - not within 25 chunks of spawn
+    } else if (typeRoll >= 0.99999999 && chunkDistFromSpawn > 50) {
+      type = TreeType.WorldTree;        // 0.000001% - not within 50 chunks of spawn - LEGENDARY!
     } else {
       // Fallback to MagicTree if legendary tree can't spawn due to distance
       type = TreeType.MagicTree;

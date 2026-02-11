@@ -5,6 +5,16 @@ import { getTreeSprite } from './sprites';
 // Ground colors for tiling
 const GROUND_COLORS = ['#3d5c3d', '#4a6b4a', '#3f5f3f'];
 
+export interface OptionsMenuState {
+  selection: number;
+  editingKeybind: string | null;
+  keybinds: Record<string, string>;
+  effectiveUpgrades: { axePower: number; moveSpeed: number; chopSpeed: number; carryCapacity: number };
+  effectiveWorkerUpgrades: { restSpeed: number; workDuration: number; workerSpeed: number; workerPower: number };
+  maxUpgrades: { axePower: number; moveSpeed: number; chopSpeed: number; carryCapacity: number };
+  maxWorkerUpgrades: { restSpeed: number; workDuration: number; workerSpeed: number; workerPower: number };
+}
+
 export function render(
   ctx: CanvasRenderingContext2D,
   state: GameState,
@@ -15,7 +25,9 @@ export function render(
   regenCooldown: number = 0,
   cheatMenuOpen: boolean = false,
   treeChecklistOpen: boolean = false,
-  squadMenuOpen: boolean = false
+  squadMenuOpen: boolean = false,
+  optionsMenuOpen: boolean = false,
+  optionsMenuState: OptionsMenuState | null = null
 ): void {
   const { camera, player, chunks } = state;
   const baseScale = config.pixelScale;
@@ -152,6 +164,11 @@ export function render(
   // Draw squad menu if open (ignores UI hidden state)
   if (squadMenuOpen) {
     drawSquadMenu(ctx, state);
+  }
+
+  // Draw options menu if open (ignores UI hidden state)
+  if (optionsMenuOpen && optionsMenuState) {
+    drawOptionsMenu(ctx, optionsMenuState);
   }
 
   // Draw player waypoint off-screen indicator at all zoom levels
@@ -1408,6 +1425,130 @@ function drawSquadMenu(
   ctx.textAlign = 'center';
   ctx.fillText('Squad workers follow you and teleport with you', menuX + menuWidth / 2, menuY + menuHeight - 28);
   ctx.fillText('They will not work until released', menuX + menuWidth / 2, menuY + menuHeight - 12);
+}
+
+function drawOptionsMenu(
+  ctx: CanvasRenderingContext2D,
+  menuState: OptionsMenuState
+): void {
+  const menuWidth = 380;
+  const menuHeight = 520;
+  const menuX = (ctx.canvas.width - menuWidth) / 2;
+  const menuY = (ctx.canvas.height - menuHeight) / 2;
+
+  // Darken background
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+  // Menu background
+  ctx.fillStyle = 'rgba(40, 40, 50, 0.95)';
+  ctx.fillRect(menuX, menuY, menuWidth, menuHeight);
+
+  // Menu border
+  ctx.strokeStyle = '#88AA44';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(menuX, menuY, menuWidth, menuHeight);
+
+  // Title
+  ctx.fillStyle = '#88AA44';
+  ctx.font = 'bold 18px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('OPTIONS', menuX + menuWidth / 2, menuY + 28);
+
+  // Subtitle
+  ctx.fillStyle = '#888';
+  ctx.font = '10px monospace';
+  ctx.fillText('Arrow keys to navigate, Left/Right to adjust', menuX + menuWidth / 2, menuY + 42);
+
+  const options = [
+    // Player stats
+    { label: 'Axe Power', type: 'stat', key: 'axePower', category: 'Player' },
+    { label: 'Move Speed', type: 'stat', key: 'moveSpeed', category: 'Player' },
+    { label: 'Chop Speed', type: 'stat', key: 'chopSpeed', category: 'Player' },
+    { label: 'Carry Capacity', type: 'stat', key: 'carryCapacity', category: 'Player' },
+    // Worker stats
+    { label: 'Rest Speed', type: 'stat', key: 'restSpeed', category: 'Worker' },
+    { label: 'Work Duration', type: 'stat', key: 'workDuration', category: 'Worker' },
+    { label: 'Worker Speed', type: 'stat', key: 'workerSpeed', category: 'Worker' },
+    { label: 'Worker Power', type: 'stat', key: 'workerPower', category: 'Worker' },
+    // Keybinds
+    { label: 'Squad Menu', type: 'keybind', key: 'squadMenu', category: 'Keybinds' },
+    { label: 'Cheat Menu', type: 'keybind', key: 'cheatMenu', category: 'Keybinds' },
+    { label: 'Tree Checklist', type: 'keybind', key: 'treeChecklist', category: 'Keybinds' },
+    { label: 'Options Menu', type: 'keybind', key: 'optionsMenu', category: 'Keybinds' },
+    { label: 'Toggle UI', type: 'keybind', key: 'toggleUI', category: 'Keybinds' },
+    { label: 'Stump Timers', type: 'keybind', key: 'toggleStumpTimers', category: 'Keybinds' },
+    { label: 'Teleport Home', type: 'keybind', key: 'teleportHome', category: 'Keybinds' },
+  ];
+
+  let y = menuY + 60;
+  let lastCategory = '';
+
+  for (let i = 0; i < options.length; i++) {
+    const opt = options[i];
+    const isSelected = i === menuState.selection;
+
+    // Draw category header
+    if (opt.category !== lastCategory) {
+      lastCategory = opt.category;
+      ctx.fillStyle = '#88AA44';
+      ctx.font = 'bold 12px monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText(`-- ${opt.category} --`, menuX + 15, y);
+      y += 18;
+    }
+
+    // Highlight selected row
+    if (isSelected) {
+      ctx.fillStyle = 'rgba(136, 170, 68, 0.3)';
+      ctx.fillRect(menuX + 10, y - 12, menuWidth - 20, 18);
+    }
+
+    // Draw label
+    ctx.fillStyle = isSelected ? '#fff' : '#ccc';
+    ctx.font = '12px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText(opt.label, menuX + 20, y);
+
+    // Draw value
+    ctx.textAlign = 'right';
+    if (opt.type === 'stat') {
+      const isPlayerStat = ['axePower', 'moveSpeed', 'chopSpeed', 'carryCapacity'].includes(opt.key);
+      let current: number, max: number;
+      if (isPlayerStat) {
+        current = menuState.effectiveUpgrades[opt.key as keyof typeof menuState.effectiveUpgrades];
+        max = menuState.maxUpgrades[opt.key as keyof typeof menuState.maxUpgrades];
+      } else {
+        current = menuState.effectiveWorkerUpgrades[opt.key as keyof typeof menuState.effectiveWorkerUpgrades];
+        max = menuState.maxWorkerUpgrades[opt.key as keyof typeof menuState.maxWorkerUpgrades];
+      }
+      const canDecrease = current > 1;
+      const canIncrease = current < max;
+
+      ctx.fillStyle = isSelected ? '#88AA44' : '#888';
+      const leftArrow = canDecrease ? '< ' : '  ';
+      const rightArrow = canIncrease ? ' >' : '  ';
+      ctx.fillText(`${leftArrow}${current}/${max}${rightArrow}`, menuX + menuWidth - 20, y);
+    } else if (opt.type === 'keybind') {
+      const keyValue = menuState.keybinds[opt.key] || '?';
+      const isEditing = menuState.editingKeybind === opt.key;
+      if (isEditing) {
+        ctx.fillStyle = '#ff8';
+        ctx.fillText('Press any key...', menuX + menuWidth - 20, y);
+      } else {
+        ctx.fillStyle = isSelected ? '#88CCFF' : '#888';
+        ctx.fillText(`[${keyValue}]`, menuX + menuWidth - 20, y);
+      }
+    }
+
+    y += 20;
+  }
+
+  // Footer
+  ctx.fillStyle = '#888';
+  ctx.font = '10px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Enter to edit keybind | Escape to close', menuX + menuWidth / 2, menuY + menuHeight - 15);
 }
 
 function drawTreeChecklist(
