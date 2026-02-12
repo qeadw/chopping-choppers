@@ -1886,6 +1886,7 @@ export class GameEngine {
   };
 
   // Calculate milestone bonuses from tree chop counts
+  // Each tree type gives a ONE-TIME bonus when you reach the milestone threshold
   private calculateMilestoneBonuses(): MilestoneBonuses {
     let speedPercent = 0;
     let powerPercent = 0;
@@ -1895,8 +1896,9 @@ export class GameEngine {
       const milestone = TREE_CHOP_MILESTONES[treeType as TreeType];
       if (!milestone) continue;
 
-      const milestoneCount = Math.floor(count / milestone.perMilestone);
-      const bonus = milestoneCount * milestone.bonusPercent;
+      // Only grant bonus once per tree type (cap at 1 milestone)
+      const milestoneReached = count >= milestone.perMilestone ? 1 : 0;
+      const bonus = milestoneReached * milestone.bonusPercent;
 
       if (milestone.bonusType === 'speed') {
         speedPercent += bonus;
