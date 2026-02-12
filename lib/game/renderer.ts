@@ -31,7 +31,8 @@ export function render(
   optionsMenuOpen: boolean = false,
   optionsMenuState: OptionsMenuState | null = null,
   keybindsMenuOpen: boolean = false,
-  keybindsMenuState: KeybindsMenuState | null = null
+  keybindsMenuState: KeybindsMenuState | null = null,
+  squadFollowDistance: number = 200
 ): void {
   const { camera, player, chunks } = state;
   const baseScale = config.pixelScale;
@@ -167,7 +168,7 @@ export function render(
 
   // Draw squad menu if open (ignores UI hidden state)
   if (squadMenuOpen) {
-    drawSquadMenu(ctx, state);
+    drawSquadMenu(ctx, state, squadFollowDistance);
   }
 
   // Draw options menu if open (ignores UI hidden state)
@@ -1352,10 +1353,11 @@ function drawCheatMenu(
 
 function drawSquadMenu(
   ctx: CanvasRenderingContext2D,
-  state: GameState
+  state: GameState,
+  squadFollowDistance: number
 ): void {
-  const menuWidth = 320;
-  const menuHeight = 340;
+  const menuWidth = 340;
+  const menuHeight = 430;
   const menuX = (ctx.canvas.width - menuWidth) / 2;
   const menuY = (ctx.canvas.height - menuHeight) / 2;
 
@@ -1399,19 +1401,23 @@ function drawSquadMenu(
 
   ctx.font = '13px monospace';
   ctx.fillStyle = '#4f8';
-  ctx.fillText(`Choppers:   ${escortingChoppers}/${chopperCount} following`, menuX + 30, menuY + 92);
+  ctx.fillText(`Choppers:   ${escortingChoppers}/${chopperCount} in squad`, menuX + 30, menuY + 92);
   ctx.fillStyle = '#f84';
-  ctx.fillText(`Collectors: ${escortingCollectors}/${collectorCount} following`, menuX + 30, menuY + 112);
+  ctx.fillText(`Collectors: ${escortingCollectors}/${collectorCount} in squad`, menuX + 30, menuY + 112);
+
+  // Follow distance setting
+  ctx.fillStyle = '#88CCFF';
+  ctx.fillText(`Follow Distance: ${squadFollowDistance}px`, menuX + 30, menuY + 132);
 
   // Available workers
   ctx.fillStyle = '#aaa';
   ctx.font = '11px monospace';
-  ctx.fillText(`(${availableChoppers} available choppers, ${availableCollectors} available collectors)`, menuX + 20, menuY + 135);
+  ctx.fillText(`(${availableChoppers} available choppers, ${availableCollectors} available collectors)`, menuX + 20, menuY + 152);
 
   // Controls
   ctx.fillStyle = '#fff';
   ctx.font = 'bold 14px monospace';
-  ctx.fillText('Controls:', menuX + 20, menuY + 165);
+  ctx.fillText('Controls:', menuX + 20, menuY + 178);
 
   ctx.font = '13px monospace';
   const controls = [
@@ -1422,23 +1428,26 @@ function drawSquadMenu(
     { key: '3', label: 'Release Chopper from squad' },
     { key: '4', label: 'Release Collector from squad' },
     { key: '5', label: 'Release ALL workers' },
+    { key: '6/-', label: 'Decrease follow distance' },
+    { key: '7/+', label: 'Increase follow distance' },
+    { key: '0', label: 'Reset distance (200px)' },
   ];
 
-  let y = menuY + 188;
+  let y = menuY + 200;
   for (const ctrl of controls) {
     ctx.fillStyle = '#88CCFF';
     ctx.fillText(`[${ctrl.key}]`, menuX + 25, y);
     ctx.fillStyle = '#fff';
-    ctx.fillText(ctrl.label, menuX + 100, y);
-    y += 20;
+    ctx.fillText(ctrl.label, menuX + 110, y);
+    y += 18;
   }
 
   // Info
   ctx.fillStyle = '#888';
   ctx.font = '11px monospace';
   ctx.textAlign = 'center';
-  ctx.fillText('Squad workers follow you and teleport with you', menuX + menuWidth / 2, menuY + menuHeight - 28);
-  ctx.fillText('They will not work until released', menuX + menuWidth / 2, menuY + menuHeight - 12);
+  ctx.fillText('Squad workers work within the follow distance', menuX + menuWidth / 2, menuY + menuHeight - 28);
+  ctx.fillText('and return to you if they stray too far', menuX + menuWidth / 2, menuY + menuHeight - 12);
 }
 
 function drawOptionsMenu(

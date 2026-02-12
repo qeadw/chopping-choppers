@@ -129,6 +129,8 @@ interface SaveData {
   effectiveWorkerUpgrades?: { restSpeed: number; workDuration: number; workerSpeed: number; workerPower: number };
   // Stat multipliers (0-1) for fine-grained control
   statMultipliers?: Record<string, number>;
+  // Squad follow distance
+  squadFollowDistance?: number;
 }
 
 export class GameEngine {
@@ -160,6 +162,7 @@ export class GameEngine {
   private cheatMenuOpen: boolean = false; // Whether cheat menu is visible
   private treeChecklistOpen: boolean = false; // Whether tree checklist is visible
   private squadMenuOpen: boolean = false; // Whether squad menu is visible
+  private squadFollowDistance: number = 200; // How far squad workers can stray from player (pixels)
   private optionsMenuOpen: boolean = false; // Whether options menu is visible
   private optionsMenuSelection: number = 0; // Currently selected option in options menu
   private editingKeybind: string | null = null; // Which keybind is being edited (null = none)
@@ -552,6 +555,18 @@ export class GameEngine {
         } else if (key === '@') {
           // Add all collectors to escort (shift+2)
           this.addToEscort(WorkerType.Collector, 999);
+        } else if (key === '6' || key === '-') {
+          // Decrease squad follow distance
+          this.squadFollowDistance = Math.max(50, this.squadFollowDistance - 50);
+          this.addFloatingText(this.state.player.position.x, this.state.player.position.y - 30, `Follow distance: ${this.squadFollowDistance}px`, '#88CCFF');
+        } else if (key === '7' || key === '=' || key === '+') {
+          // Increase squad follow distance
+          this.squadFollowDistance = Math.min(800, this.squadFollowDistance + 50);
+          this.addFloatingText(this.state.player.position.x, this.state.player.position.y - 30, `Follow distance: ${this.squadFollowDistance}px`, '#88CCFF');
+        } else if (key === '0') {
+          // Reset squad follow distance to default
+          this.squadFollowDistance = 200;
+          this.addFloatingText(this.state.player.position.x, this.state.player.position.y - 30, `Follow distance reset: ${this.squadFollowDistance}px`, '#88CCFF');
         }
       } else if (this.optionsMenuOpen) {
         // Options menu actions
@@ -884,6 +899,8 @@ export class GameEngine {
         effectiveWorkerUpgrades: this.effectiveWorkerUpgrades,
         // Stat multipliers
         statMultipliers: this.statMultipliers,
+        // Squad follow distance
+        squadFollowDistance: this.squadFollowDistance,
       };
       localStorage.setItem(SAVE_KEY, obfuscateSave(JSON.stringify(saveData)));
     } catch (e) {
@@ -1111,6 +1128,11 @@ export class GameEngine {
       // Restore stat multipliers
       if (data.statMultipliers) {
         this.statMultipliers = { ...this.statMultipliers, ...data.statMultipliers };
+      }
+
+      // Restore squad follow distance
+      if (data.squadFollowDistance !== undefined) {
+        this.squadFollowDistance = data.squadFollowDistance;
       }
 
       // Ensure effective upgrades don't exceed actual upgrades (in case upgrades changed)
@@ -2664,29 +2686,61 @@ export class GameEngine {
         worker.state = WorkerState.Idle;
       }
 
-      // Handle escorting workers - they follow the player
+      // Handle escorting workers - they work within squadFollowDistance of player
       if (worker.isEscorting) {
         const playerPos = this.state.player.position;
         const dx = playerPos.x - worker.position.x;
         const dy = playerPos.y - worker.position.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
+        const distFromPlayer = Math.sqrt(dx * dx + dy * dy);
 
-        // Follow if more than 40 pixels away, stop if within 25 pixels
-        if (dist > 40) {
+        // If too far from player, return to player
+        if (distFromPlayer > this.squadFollowDistance) {
           const speed = effectiveSpeed;
-          worker.velocity.x = (dx / dist) * speed;
-          worker.velocity.y = (dy / dist) * speed;
+          worker.velocity.x = (dx / distFromPlayer) * speed;
+          worker.velocity.y = (dy / distFromPlayer) * speed;
           worker.facingRight = dx > 0;
-        } else if (dist < 25) {
-          worker.velocity.x = 0;
-          worker.velocity.y = 0;
+          worker.position.x += worker.velocity.x * deltaTime;
+          worker.position.y += worker.velocity.y * deltaTime;
+          worker.lastPosition = { ...worker.position };
+          // Clear any targets when returning
+          worker.targetTree = null;
+          worker.targetDrop = null;
+          worker.targetApple = null;
+          worker.state = WorkerState.Escorting;
+          continue;
         }
 
-        // Update position
-        worker.position.x += worker.velocity.x * deltaTime;
-        worker.position.y += worker.velocity.y * deltaTime;
-        worker.lastPosition = { ...worker.position };
-        continue; // Skip normal worker AI
+        // Check if current target is within squadFollowDistance of player
+        if (worker.targetTree) {
+          const treeDx = playerPos.x - worker.targetTree.x;
+          const treeDy = playerPos.y - worker.targetTree.y;
+          const treeDist = Math.sqrt(treeDx * treeDx + treeDy * treeDy);
+          if (treeDist > this.squadFollowDistance) {
+            worker.targetTree = null;
+            worker.state = WorkerState.Idle;
+          }
+        }
+        if (worker.targetDrop) {
+          const dropDx = playerPos.x - worker.targetDrop.x;
+          const dropDy = playerPos.y - worker.targetDrop.y;
+          const dropDist = Math.sqrt(dropDx * dropDx + dropDy * dropDy);
+          if (dropDist > this.squadFollowDistance) {
+            worker.targetDrop = null;
+            worker.state = WorkerState.Idle;
+          }
+        }
+        if (worker.targetApple) {
+          const appleDx = playerPos.x - worker.targetApple.x;
+          const appleDy = playerPos.y - worker.targetApple.y;
+          const appleDist = Math.sqrt(appleDx * appleDx + appleDy * appleDy);
+          if (appleDist > this.squadFollowDistance) {
+            worker.targetApple = null;
+            worker.state = WorkerState.Idle;
+          }
+        }
+
+        // Within range - let normal AI handle work, but don't skip
+        // Fall through to normal worker AI (no continue)
       }
 
       switch (worker.state) {
@@ -2701,13 +2755,28 @@ export class GameEngine {
             // Choppers only look for trees to chop, never collect or sell
             const nearbyTree = this.findNearestTreeForWorker(worker);
             if (nearbyTree) {
-              worker.targetTree = nearbyTree;
-              worker.state = WorkerState.MovingToTree;
-              worker.searchRadius = 0; // Reset search radius on success
+              // If escorting, check if tree is within squadFollowDistance of player
+              if (worker.isEscorting) {
+                const playerPos = this.state.player.position;
+                const dx = playerPos.x - nearbyTree.x;
+                const dy = playerPos.y - nearbyTree.y;
+                const distFromPlayer = Math.sqrt(dx * dx + dy * dy);
+                if (distFromPlayer <= this.squadFollowDistance) {
+                  worker.targetTree = nearbyTree;
+                  worker.state = WorkerState.MovingToTree;
+                  worker.searchRadius = 0;
+                }
+                // If outside range, stay idle (don't expand search for escorting)
+              } else {
+                worker.targetTree = nearbyTree;
+                worker.state = WorkerState.MovingToTree;
+                worker.searchRadius = 0; // Reset search radius on success
+              }
             } else {
               // Expand search radius more aggressively - up to 10 chunks
               // Increase by 2 chunks at a time for faster expansion
-              if (worker.searchRadius < 10) {
+              // (Don't expand for escorting workers - they stay near player)
+              if (worker.searchRadius < 10 && !worker.isEscorting) {
                 worker.searchRadius += 2;
               }
             }
@@ -2721,10 +2790,25 @@ export class GameEngine {
             // Check for nearby apples first (priority over wood)
             const nearbyApple = this.findNearestApple(worker.position.x, worker.position.y, 800);
             if (nearbyApple) {
-              worker.targetApple = nearbyApple;
-              worker.state = WorkerState.MovingToApple;
-              worker.searchRadius = 0;
-              break;
+              // If escorting, check if apple is within squadFollowDistance of player
+              if (worker.isEscorting) {
+                const playerPos = this.state.player.position;
+                const dx = playerPos.x - nearbyApple.x;
+                const dy = playerPos.y - nearbyApple.y;
+                const distFromPlayer = Math.sqrt(dx * dx + dy * dy);
+                if (distFromPlayer <= this.squadFollowDistance) {
+                  worker.targetApple = nearbyApple;
+                  worker.state = WorkerState.MovingToApple;
+                  worker.searchRadius = 0;
+                  break;
+                }
+                // If outside range, continue to check for wood drops
+              } else {
+                worker.targetApple = nearbyApple;
+                worker.state = WorkerState.MovingToApple;
+                worker.searchRadius = 0;
+                break;
+              }
             }
 
             // Collectors look for wood drops to collect
@@ -2762,10 +2846,24 @@ export class GameEngine {
 
               const nearbyDrop = this.findNearestWoodDrop(searchX, searchY, maxRange);
               if (nearbyDrop) {
-                worker.targetDrop = nearbyDrop;
-                worker.state = WorkerState.MovingToDrop;
-                worker.searchRadius = 0; // Reset search radius on success
-              } else if (targetWaypoint) {
+                // If escorting, check if drop is within squadFollowDistance of player
+                if (worker.isEscorting) {
+                  const playerPos = this.state.player.position;
+                  const dx = playerPos.x - nearbyDrop.x;
+                  const dy = playerPos.y - nearbyDrop.y;
+                  const distFromPlayer = Math.sqrt(dx * dx + dy * dy);
+                  if (distFromPlayer <= this.squadFollowDistance) {
+                    worker.targetDrop = nearbyDrop;
+                    worker.state = WorkerState.MovingToDrop;
+                    worker.searchRadius = 0;
+                  }
+                  // If outside range, stay idle (escorting collectors don't wander)
+                } else {
+                  worker.targetDrop = nearbyDrop;
+                  worker.state = WorkerState.MovingToDrop;
+                  worker.searchRadius = 0; // Reset search radius on success
+                }
+              } else if (targetWaypoint && !worker.isEscorting) {
                 // Move toward waypoint to search for wood there
                 const dx = targetWaypoint.x - worker.position.x;
                 const dy = targetWaypoint.y - worker.position.y;
@@ -2782,8 +2880,9 @@ export class GameEngine {
                   worker.velocity.x = 0;
                   worker.velocity.y = 0;
                 }
-              } else {
+              } else if (!worker.isEscorting) {
                 // No wood found nearby - look for active choppers to follow
+                // (Escorting workers don't do this - they stay near player)
                 const activeChoppers = this.state.workers.filter(w =>
                   w.type === WorkerType.Chopper && w.targetTree && !w.targetTree.isDead
                 );
@@ -3912,7 +4011,8 @@ export class GameEngine {
       this.optionsMenuOpen,
       this.optionsMenuOpen ? this.getOptionsMenuState() : null,
       this.keybindsMenuOpen,
-      this.keybindsMenuOpen ? this.getKeybindsMenuState() : null
+      this.keybindsMenuOpen ? this.getKeybindsMenuState() : null,
+      this.squadFollowDistance
     );
   }
 }
