@@ -235,11 +235,13 @@ function drawTree(
     sprite.height * scale
   );
 
-  // Draw health bar if tree is damaged (health < maxHealth, 2x, 4x, or 8x for challenge)
-  // Determine effective max based on current health (could be 1x, 2x, 4x, or 8x)
+  // Draw health bar if tree is damaged (health < maxHealth, 2x, 4x, 8x, or 16x for challenge)
+  // Determine effective max based on current health (could be 1x, 2x, 4x, 8x, or 16x)
   let effectiveMaxHealth = tree.maxHealth;
-  if (tree.health > tree.maxHealth * 4) {
-    effectiveMaxHealth = tree.maxHealth * 8;  // Gold/Platinum challenge (8x)
+  if (tree.health > tree.maxHealth * 8) {
+    effectiveMaxHealth = tree.maxHealth * 16;  // Platinum challenge (16x)
+  } else if (tree.health > tree.maxHealth * 4) {
+    effectiveMaxHealth = tree.maxHealth * 8;  // Gold challenge (8x)
   } else if (tree.health > tree.maxHealth * 2) {
     effectiveMaxHealth = tree.maxHealth * 4;  // Silver challenge (4x)
   } else if (tree.health > tree.maxHealth) {
@@ -257,12 +259,15 @@ function drawTree(
 
     // Health - use effective max for percentage
     const healthPercent = tree.health / effectiveMaxHealth;
-    // Gold/Plat (8x) = white/platinum, Silver (4x) = silver, Bronze (2x) = bronze/orange, normal = green
-    const isGoldPlatChallenge = effectiveMaxHealth > tree.maxHealth * 4;
-    const isSilverChallenge = effectiveMaxHealth > tree.maxHealth * 2 && !isGoldPlatChallenge;
-    const isBronzeChallenge = effectiveMaxHealth > tree.maxHealth && !isSilverChallenge && !isGoldPlatChallenge;
-    if (isGoldPlatChallenge) {
-      ctx.fillStyle = healthPercent > 0.5 ? '#E5E4E2' : healthPercent > 0.25 ? '#FFD700' : '#f44';
+    // Plat (16x) = platinum, Gold (8x) = gold, Silver (4x) = silver, Bronze (2x) = bronze, normal = green
+    const isPlatChallenge = effectiveMaxHealth > tree.maxHealth * 8;
+    const isGoldChallenge = effectiveMaxHealth > tree.maxHealth * 4 && !isPlatChallenge;
+    const isSilverChallenge = effectiveMaxHealth > tree.maxHealth * 2 && !isGoldChallenge && !isPlatChallenge;
+    const isBronzeChallenge = effectiveMaxHealth > tree.maxHealth && !isSilverChallenge && !isGoldChallenge && !isPlatChallenge;
+    if (isPlatChallenge) {
+      ctx.fillStyle = healthPercent > 0.5 ? '#E5E4E2' : healthPercent > 0.25 ? '#B8B8B8' : '#f44';
+    } else if (isGoldChallenge) {
+      ctx.fillStyle = healthPercent > 0.5 ? '#FFD700' : healthPercent > 0.25 ? '#DAA520' : '#f44';
     } else if (isSilverChallenge) {
       ctx.fillStyle = healthPercent > 0.5 ? '#C0C0C0' : healthPercent > 0.25 ? '#A0A0A0' : '#f44';
     } else if (isBronzeChallenge) {
@@ -1107,8 +1112,8 @@ function drawChunkOverlay(
       const tier = isPlatinum ? 4 : isGold ? 3 : isSilver ? 2 : isBronze ? 1 : 0;
       const isChallenge = state.challengeChunks.has(key);
       const cooldown = state.chunkToggleCooldowns.get(key) || 0;
-      // Challenge multipliers: bronze=2x, silver=4x, gold=8x, platinum=8x
-      const challengeMulti = tier === 1 ? 2 : tier === 2 ? 4 : tier >= 3 ? 8 : 2;
+      // Challenge multipliers: bronze=2x, silver=4x, gold=8x, platinum=16x
+      const challengeMulti = tier === 1 ? 2 : tier === 2 ? 4 : tier === 3 ? 8 : tier === 4 ? 16 : 2;
 
       let color: string;
       let treeCount = 0;

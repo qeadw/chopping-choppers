@@ -1896,8 +1896,8 @@ export class GameEngine {
       const milestone = TREE_CHOP_MILESTONES[treeType as TreeType];
       if (!milestone) continue;
 
-      // Only grant bonus once per tree type (cap at 1 milestone)
-      const milestoneReached = count >= milestone.perMilestone ? 1 : 0;
+      // Grant bonus up to 3 times per tree type
+      const milestoneReached = Math.min(3, Math.floor(count / milestone.perMilestone));
       const bonus = milestoneReached * milestone.bonusPercent;
 
       if (milestone.bonusType === 'speed') {
@@ -2063,7 +2063,7 @@ export class GameEngine {
     this.spawnWoodParticles(nearestTree.x, nearestTree.y - 20);
 
     if (wasDestroyed) {
-      // Tree was chopped down - spawn wood drop (2x gold challenge, 4x platinum challenge)
+      // Tree was chopped down - spawn wood drop (2x bronze, 4x silver, 8x gold, 16x platinum)
       const baseWood = TREE_STATS[nearestTree.type].woodDrop;
       const multiplier = this.getChallengeMultiplier(nearestTree.x, nearestTree.y);
       const woodAmount = baseWood * multiplier;
@@ -2937,7 +2937,7 @@ export class GameEngine {
             this.spawnWoodParticles(worker.targetTree.x, worker.targetTree.y - 20);
 
             if (wasDestroyed) {
-              // 2x drops in gold challenge, 4x in platinum challenge
+              // 2x bronze, 4x silver, 8x gold, 16x platinum challenge drops
               const baseWood = TREE_STATS[worker.targetTree.type].woodDrop;
               const multiplier = this.getChallengeMultiplier(worker.targetTree.x, worker.targetTree.y);
               const woodAmount = baseWood * multiplier;
@@ -3669,8 +3669,8 @@ export class GameEngine {
 
       this.addFloatingText(centerX, centerY, `${tierNames[newTier]} CHUNK!`, tierColors[newTier]);
 
-      // High tier chunks (silver+) regenerate in challenge mode
-      if (newTier >= 2) {
+      // Only platinum chunks auto-regenerate in challenge mode
+      if (newTier === 4) {
         this.platinumChunkRegenTimers.set(key, 30);
         this.addFloatingText(centerX, centerY - 20, 'Trees regen in 30s', '#AAAAAA');
       }
@@ -3678,8 +3678,8 @@ export class GameEngine {
       // First time clear (no challenge) - bronze
       this.state.bronzeChunks.add(key);
       this.addFloatingText(centerX, centerY, 'BRONZE CHUNK!', '#CD7F32');
-    } else if (isChallenge && currentTier >= 2) {
-      // Already silver+ and in challenge mode - start regen timer
+    } else if (isChallenge && currentTier === 4) {
+      // Platinum chunks in challenge mode - start regen timer
       this.platinumChunkRegenTimers.set(key, 30);
       this.addFloatingText(centerX, centerY, 'Trees regen in 30s', '#AAAAAA');
     }
