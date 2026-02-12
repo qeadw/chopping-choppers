@@ -2703,9 +2703,10 @@ export class GameEngine {
               worker.state = WorkerState.MovingToTree;
               worker.searchRadius = 0; // Reset search radius on success
             } else {
-              // Expand search radius up to 5 extra chunks
-              if (worker.searchRadius < 5) {
-                worker.searchRadius++;
+              // Expand search radius more aggressively - up to 10 chunks
+              // Increase by 2 chunks at a time for faster expansion
+              if (worker.searchRadius < 10) {
+                worker.searchRadius += 2;
               }
             }
           } else if (isCollector) {
@@ -2780,27 +2781,74 @@ export class GameEngine {
                   worker.velocity.y = 0;
                 }
               } else {
-                // Expand search radius up to 5 extra chunks
-                if (worker.searchRadius < 5) {
-                  worker.searchRadius++;
-                }
-                // Only go sell if search is maxed out and carrying wood
-                // Otherwise keep searching or drift toward chipper
-                if (worker.wood > 0 && worker.searchRadius >= 5) {
-                  worker.state = WorkerState.ReturningToChipper;
+                // No wood found nearby - look for active choppers to follow
+                const activeChoppers = this.state.workers.filter(w =>
+                  w.type === WorkerType.Chopper && w.targetTree && !w.targetTree.isDead
+                );
+
+                if (activeChoppers.length > 0) {
+                  // Find the nearest active chopper
+                  let nearestChopper: Worker | null = null;
+                  let nearestChopperDist = Infinity;
+                  for (const chopper of activeChoppers) {
+                    const dx = chopper.position.x - worker.position.x;
+                    const dy = chopper.position.y - worker.position.y;
+                    const dist = dx * dx + dy * dy;
+                    if (dist < nearestChopperDist) {
+                      nearestChopperDist = dist;
+                      nearestChopper = chopper;
+                    }
+                  }
+
+                  if (nearestChopper) {
+                    // Search for wood near the chopper instead of near self
+                    const dropNearChopper = this.findNearestWoodDrop(
+                      nearestChopper.position.x, nearestChopper.position.y, 600
+                    );
+
+                    if (dropNearChopper) {
+                      worker.targetDrop = dropNearChopper;
+                      worker.state = WorkerState.MovingToDrop;
+                      worker.searchRadius = 0;
+                    } else {
+                      // Move toward the chopper to be ready to collect
+                      const dx = nearestChopper.position.x - worker.position.x;
+                      const dy = nearestChopper.position.y - worker.position.y;
+                      const dist = Math.sqrt(dx * dx + dy * dy);
+                      if (dist > 100 && dist > 0) {
+                        worker.velocity.x = (dx / dist) * effectiveSpeed;
+                        worker.velocity.y = (dy / dist) * effectiveSpeed;
+                        worker.facingRight = dx > 0;
+                      } else {
+                        // Near chopper, wait for wood to drop
+                        worker.velocity.x = 0;
+                        worker.velocity.y = 0;
+                      }
+                    }
+                  }
                 } else {
-                  // Move toward chipper if too far away (more than 200 units)
-                  const dx = chipperCenterX - worker.position.x;
-                  const dy = chipperCenterY - worker.position.y;
-                  const dist = Math.sqrt(dx * dx + dy * dy);
-                  if (dist > 200 && dist > 0) {
-                    // Slowly drift toward chipper
-                    worker.velocity.x = (dx / dist) * effectiveSpeed * 0.5;
-                    worker.velocity.y = (dy / dist) * effectiveSpeed * 0.5;
-                    worker.facingRight = dx > 0;
+                  // No active choppers, expand search radius
+                  if (worker.searchRadius < 5) {
+                    worker.searchRadius++;
+                  }
+                  // Only go sell if search is maxed out and carrying wood
+                  // Otherwise keep searching or drift toward chipper
+                  if (worker.wood > 0 && worker.searchRadius >= 5) {
+                    worker.state = WorkerState.ReturningToChipper;
                   } else {
-                    worker.velocity.x = 0;
-                    worker.velocity.y = 0;
+                    // Move toward chipper if too far away (more than 200 units)
+                    const dx = chipperCenterX - worker.position.x;
+                    const dy = chipperCenterY - worker.position.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist > 200 && dist > 0) {
+                      // Slowly drift toward chipper
+                      worker.velocity.x = (dx / dist) * effectiveSpeed * 0.5;
+                      worker.velocity.y = (dy / dist) * effectiveSpeed * 0.5;
+                      worker.facingRight = dx > 0;
+                    } else {
+                      worker.velocity.x = 0;
+                      worker.velocity.y = 0;
+                    }
                   }
                 }
               }
@@ -3329,13 +3377,20 @@ export class GameEngine {
       }
     }
 
-    // If waypoints exist, get the chunks they're in
+    // If waypoints exist, get the chunks they're in (including adjacent chunks based on search radius)
     const waypointChunks = new Set<string>();
     if (hasWaypoints) {
+      // Expand search based on searchRadius - each level adds a ring of chunks around waypoints
+      const expansionRadius = Math.floor(worker.searchRadius / 2); // 0-1 = center, 2-3 = +1, 4-5 = +2, etc.
       for (const wp of chopperWaypoints) {
-        const chunkX = Math.floor(wp.x / this.config.chunkSize);
-        const chunkY = Math.floor(wp.y / this.config.chunkSize);
-        waypointChunks.add(`${chunkX},${chunkY}`);
+        const centerChunkX = Math.floor(wp.x / this.config.chunkSize);
+        const centerChunkY = Math.floor(wp.y / this.config.chunkSize);
+        // Add center chunk and expanded radius
+        for (let dx = -expansionRadius; dx <= expansionRadius; dx++) {
+          for (let dy = -expansionRadius; dy <= expansionRadius; dy++) {
+            waypointChunks.add(`${centerChunkX + dx},${centerChunkY + dy}`);
+          }
+        }
       }
     }
 
@@ -3347,7 +3402,7 @@ export class GameEngine {
     for (const chunk of this.state.chunks.values()) {
       const chunkKey = `${chunk.x},${chunk.y}`;
 
-      // If waypoints exist, ONLY consider trees in waypoint chunks
+      // If waypoints exist, consider trees in waypoint chunks and expanded area
       if (hasWaypoints && !waypointChunks.has(chunkKey)) {
         continue;
       }
