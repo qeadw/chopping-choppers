@@ -2701,6 +2701,18 @@ export class GameEngine {
           worker.facingRight = dx > 0;
           worker.position.x += worker.velocity.x * deltaTime;
           worker.position.y += worker.velocity.y * deltaTime;
+
+          // Overshoot prevention for escorting workers returning to player
+          const moveThisFrame = speed * deltaTime;
+          const newDx = playerPos.x - worker.position.x;
+          const newDy = playerPos.y - worker.position.y;
+          const newDistFromPlayer = Math.sqrt(newDx * newDx + newDy * newDy);
+          // If we moved more than needed and overshot, snap to just within follow distance
+          if (moveThisFrame > newDistFromPlayer + this.squadFollowDistance * 0.8) {
+            worker.position.x = playerPos.x - (worker.velocity.x / speed) * this.squadFollowDistance * 0.8;
+            worker.position.y = playerPos.y - (worker.velocity.y / speed) * this.squadFollowDistance * 0.8;
+          }
+
           worker.lastPosition = { ...worker.position };
           // Clear any targets when returning
           worker.targetTree = null;
@@ -3356,6 +3368,69 @@ export class GameEngine {
       // Apply velocity
       worker.position.x += worker.velocity.x * deltaTime;
       worker.position.y += worker.velocity.y * deltaTime;
+
+      // Overshoot prevention: if worker moved past their target, snap them close to it
+      // This fixes issues with very fast workers (high speed upgrades + apple buff) missing targets
+      const velMag = Math.sqrt(worker.velocity.x * worker.velocity.x + worker.velocity.y * worker.velocity.y);
+      const moveThisFrame = velMag * deltaTime;
+
+      if (worker.state === WorkerState.MovingToTree && worker.targetTree && velMag > 0) {
+        const dx = worker.targetTree.x - worker.position.x;
+        const dy = worker.targetTree.y - worker.position.y;
+        const distAfterMove = Math.sqrt(dx * dx + dy * dy);
+        // If we moved more than the remaining distance, we overshot - snap to just within range
+        if (moveThisFrame > distAfterMove + 25) {
+          // Place worker 25 units from target, in the direction they came from (opposite of velocity)
+          worker.position.x = worker.targetTree.x - (worker.velocity.x / velMag) * 25;
+          worker.position.y = worker.targetTree.y - (worker.velocity.y / velMag) * 25;
+        }
+      } else if (worker.state === WorkerState.MovingToDrop && worker.targetDrop && velMag > 0) {
+        const dx = worker.targetDrop.x - worker.position.x;
+        const dy = worker.targetDrop.y - worker.position.y;
+        const distAfterMove = Math.sqrt(dx * dx + dy * dy);
+        // If we moved more than the remaining distance, we overshot - snap to just within range
+        if (moveThisFrame > distAfterMove + 15) {
+          worker.position.x = worker.targetDrop.x - (worker.velocity.x / velMag) * 15;
+          worker.position.y = worker.targetDrop.y - (worker.velocity.y / velMag) * 15;
+        }
+      } else if (worker.state === WorkerState.ReturningToChipper && velMag > 0) {
+        const dx = chipperCenterX - worker.position.x;
+        const dy = chipperCenterY - worker.position.y;
+        const distAfterMove = Math.sqrt(dx * dx + dy * dy);
+        // If we moved more than the remaining distance, we overshot - snap to just within range
+        if (moveThisFrame > distAfterMove + 25) {
+          worker.position.x = chipperCenterX - (worker.velocity.x / velMag) * 25;
+          worker.position.y = chipperCenterY - (worker.velocity.y / velMag) * 25;
+        }
+      } else if (worker.state === WorkerState.GoingToRest && velMag > 0) {
+        const dx = shackCenterX - worker.position.x;
+        const dy = shackCenterY - worker.position.y;
+        const distAfterMove = Math.sqrt(dx * dx + dy * dy);
+        // If we moved more than the remaining distance, we overshot - snap to just within range
+        if (moveThisFrame > distAfterMove + 25) {
+          worker.position.x = shackCenterX - (worker.velocity.x / velMag) * 25;
+          worker.position.y = shackCenterY - (worker.velocity.y / velMag) * 25;
+        }
+      } else if (worker.state === WorkerState.ReturningWithApple && velMag > 0) {
+        const { applePile } = this.state;
+        const dx = applePile.x - worker.position.x;
+        const dy = applePile.y - worker.position.y;
+        const distAfterMove = Math.sqrt(dx * dx + dy * dy);
+        // If we moved more than the remaining distance, we overshot - snap to just within range
+        if (moveThisFrame > distAfterMove + 25) {
+          worker.position.x = applePile.x - (worker.velocity.x / velMag) * 25;
+          worker.position.y = applePile.y - (worker.velocity.y / velMag) * 25;
+        }
+      } else if (worker.state === WorkerState.MovingToApple && worker.targetApple && velMag > 0) {
+        const dx = worker.targetApple.x - worker.position.x;
+        const dy = worker.targetApple.y - worker.position.y;
+        const distAfterMove = Math.sqrt(dx * dx + dy * dy);
+        // If we moved more than the remaining distance, we overshot - snap to just within range
+        if (moveThisFrame > distAfterMove + 15) {
+          worker.position.x = worker.targetApple.x - (worker.velocity.x / velMag) * 15;
+          worker.position.y = worker.targetApple.y - (worker.velocity.y / velMag) * 15;
+        }
+      }
 
       // Update phase timer
       if (worker.phaseTimer > 0) {
