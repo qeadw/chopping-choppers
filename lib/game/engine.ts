@@ -3541,9 +3541,12 @@ export class GameEngine {
     let nearest: Tree | null = null;
     let nearestDist = Infinity;
 
-    // Get chopper waypoints
+    // Escorting workers ignore waypoints and search near their position (near player)
+    const isEscorting = worker.isEscorting;
+
+    // Get chopper waypoints (only used for non-escorting workers)
     const chopperWaypoints = this.state.waypoints.filter(w => w.type === WaypointType.Chopper);
-    const hasWaypoints = chopperWaypoints.length > 0;
+    const hasWaypoints = !isEscorting && chopperWaypoints.length > 0;
 
     // Pre-compute tree targeting counts ONCE (avoid O(n²) filter in loop)
     const treeTargetCounts = new Map<Tree, number>();
@@ -3553,7 +3556,7 @@ export class GameEngine {
       }
     }
 
-    // If waypoints exist, get the chunks they're in (including adjacent chunks based on search radius)
+    // If waypoints exist (and not escorting), get the chunks they're in (including adjacent chunks based on search radius)
     const waypointChunks = new Set<string>();
     if (hasWaypoints) {
       // Expand search based on searchRadius - each level adds a ring of chunks around waypoints
@@ -3572,13 +3575,14 @@ export class GameEngine {
 
     // Calculate max range once
     const baseRange = 300;
-    const maxRange = baseRange + worker.searchRadius * this.config.chunkSize;
+    // Escorting workers use squadFollowDistance as their range
+    const maxRange = isEscorting ? this.squadFollowDistance : baseRange + worker.searchRadius * this.config.chunkSize;
     const maxRangeSq = maxRange * maxRange; // Use squared distance to avoid sqrt
 
     for (const chunk of this.state.chunks.values()) {
       const chunkKey = `${chunk.x},${chunk.y}`;
 
-      // If waypoints exist, consider trees in waypoint chunks and expanded area
+      // If waypoints exist (and not escorting), consider trees in waypoint chunks and expanded area
       if (hasWaypoints && !waypointChunks.has(chunkKey)) {
         continue;
       }
