@@ -68,19 +68,32 @@ export function render(
   // Draw shack
   drawShack(ctx, state, sprites, config, effectiveCamera, scale);
 
-  // Collect all visible trees from chunks
+  // Collect all visible trees from chunks - only iterate visible chunks
   const visibleTrees: Tree[] = [];
   const buffer = 100 / camera.zoom;
+  const chunkSize = config.chunkSize;
 
-  for (const chunk of chunks.values()) {
-    for (const tree of chunk.trees) {
-      if (
-        tree.x >= effectiveCameraX - buffer &&
-        tree.x <= effectiveCameraX + effectiveWidth + buffer &&
-        tree.y >= effectiveCameraY - buffer &&
-        tree.y <= effectiveCameraY + effectiveHeight + buffer
-      ) {
-        visibleTrees.push(tree);
+  // Calculate visible chunk range
+  const startChunkX = Math.floor((effectiveCameraX - buffer) / chunkSize);
+  const startChunkY = Math.floor((effectiveCameraY - buffer) / chunkSize);
+  const endChunkX = Math.floor((effectiveCameraX + effectiveWidth + buffer) / chunkSize);
+  const endChunkY = Math.floor((effectiveCameraY + effectiveHeight + buffer) / chunkSize);
+
+  // Only iterate over chunks that are actually visible
+  for (let cx = startChunkX; cx <= endChunkX; cx++) {
+    for (let cy = startChunkY; cy <= endChunkY; cy++) {
+      const chunk = chunks.get(chunkKey(cx, cy));
+      if (!chunk) continue;
+
+      for (const tree of chunk.trees) {
+        if (
+          tree.x >= effectiveCameraX - buffer &&
+          tree.x <= effectiveCameraX + effectiveWidth + buffer &&
+          tree.y >= effectiveCameraY - buffer &&
+          tree.y <= effectiveCameraY + effectiveHeight + buffer
+        ) {
+          visibleTrees.push(tree);
+        }
       }
     }
   }
