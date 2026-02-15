@@ -1720,9 +1720,10 @@ export class GameEngine {
 
   // Add workers to escort squad
   public addToEscort(type: WorkerType, count: number): number {
-    const availableWorkers = this.state.workers.filter(
-      w => w.type === type && !w.isEscorting && w.state !== WorkerState.Resting
-    );
+    const availableWorkers = this.state.workers
+      .filter(w => w.type === type && !w.isEscorting && w.state !== WorkerState.Resting)
+      // Sort by stamina descending - send healthiest workers first
+      .sort((a, b) => b.stamina - a.stamina);
     const toAdd = Math.min(count, availableWorkers.length);
 
     for (let i = 0; i < toAdd; i++) {
@@ -2751,8 +2752,10 @@ export class GameEngine {
           }
         }
 
-        // Within range - let normal AI handle work, but don't skip
-        // Fall through to normal worker AI (no continue)
+        // Within range - set state to Idle so they can find work
+        if (worker.state === WorkerState.Escorting) {
+          worker.state = WorkerState.Idle;
+        }
       }
 
       switch (worker.state) {

@@ -365,6 +365,43 @@ function drawWorker(
 
   ctx.restore();
 
+  // Draw worker type indicator (colored dot below worker)
+  const indicatorX = (worker.position.x - camera.x) * scale;
+  const indicatorY = (worker.position.y - camera.y + 6) * scale;
+  const indicatorRadius = 3 * scale;
+
+  ctx.beginPath();
+  ctx.arc(indicatorX, indicatorY, indicatorRadius, 0, Math.PI * 2);
+  // Green for choppers, blue for collectors
+  ctx.fillStyle = worker.type === WorkerType.Chopper ? '#4f8' : '#48f';
+  ctx.fill();
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // Draw escort indicator (small star above worker when escorting)
+  if (worker.isEscorting) {
+    const starX = (worker.position.x - camera.x) * scale;
+    const starY = (worker.position.y - camera.y - 30) * scale;
+    const starSize = 4 * scale;
+
+    ctx.fillStyle = '#FFD700';
+    ctx.beginPath();
+    // Draw a simple star shape
+    for (let i = 0; i < 5; i++) {
+      const angle = (i * 4 * Math.PI / 5) - Math.PI / 2;
+      const x = starX + Math.cos(angle) * starSize;
+      const y = starY + Math.sin(angle) * starSize;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#B8860B';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
   // Draw wood count above worker if carrying (above stamina bar)
   if (worker.wood > 0) {
     const textX = (worker.position.x - camera.x) * scale;
